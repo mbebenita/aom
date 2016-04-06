@@ -19,6 +19,11 @@
 #include "av1/common/reconinter.h"
 #include "av1/common/od_dering.h"
 
+const aom_tree_index av1_dering_refinement_level_tree[TREE_SIZE(
+    DERING_REFINEMENT_LEVELS)] = { -0, 2, -1, 4, -2, -3 };
+
+const aom_prob av1_dering_refinement_level_prob[DERING_REFINEMENT_LEVELS - 1] =
+    { 79, 91, 145 };
 
 int compute_level_from_index(int global_level, int gi) {
   static const int dering_gains[DERING_REFINEMENT_LEVELS] = {0, 11, 16, 22};

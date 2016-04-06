@@ -56,6 +56,12 @@ static const struct av1_token inter_mode_encodings[INTER_MODES] = {
   { 2, 2 }, { 6, 3 }, { 0, 1 }, { 7, 3 }
 };
 #endif
+#if DERING_REFINEMENT
+static const struct av1_token
+    dering_refinement_levels_encodings[DERING_REFINEMENT_LEVELS] = {
+      { 0, 1 }, { 2, 2 }, { 6, 3 }, { 7, 3 }
+    };
+#endif
 
 static struct av1_token ext_tx_encodings[TX_TYPES];
 
@@ -128,6 +134,14 @@ static void write_drl_idx(const AV1_COMMON *cm,
       aom_write(w, mbmi->ref_mv_idx != 1, drl1_prob);
     }
   }
+}
+#endif
+
+#if DERING_REFINEMENT
+static void write_dering_refinement_level(aom_writer *w, uint8_t level,
+                                          const aom_prob *probs) {
+  av1_write_token(w, av1_dering_refinement_level_tree, probs,
+                  &dering_refinement_levels_encodings[level]);
 }
 #endif
 
@@ -718,9 +732,10 @@ static void write_modes_sb(AV1_COMP *cpi, const TileInfo *const tile,
 #if DERING_REFINEMENT
   if (bsize == BLOCK_64X64 && cm->dering_level != 0 &&
       !sb_all_skip(cm, mi_row, mi_col)) {
-    aom_write_literal(
-        w, cm->mi_grid_visible[mi_row*cm->mi_stride + mi_col]->mbmi.dering_gain,
-        DERING_REFINEMENT_BITS);
+    write_dering_refinement_level(
+        w,
+        cm->mi_grid_visible[mi_row * cm->mi_stride + mi_col]->mbmi.dering_gain,
+        av1_dering_refinement_level_prob);
   }
 #endif
 }

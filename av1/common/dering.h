@@ -28,6 +28,11 @@ extern "C" {
 #define DERING_REFINEMENT_BITS 2
 #define DERING_REFINEMENT_LEVELS 4
 
+extern const aom_tree_index
+    av1_dering_refinement_level_tree[TREE_SIZE(DERING_REFINEMENT_LEVELS)];
+extern const aom_prob
+    av1_dering_refinement_level_prob[DERING_REFINEMENT_LEVELS - 1];
+
 int compute_level_from_index(int global_level, int gi);
 int sb_all_skip(const AV1_COMMON *const cm, int mi_row, int mi_col);
 void av1_dering_frame(YV12_BUFFER_CONFIG *frame, AV1_COMMON *cm,

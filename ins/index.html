@@ -1,0 +1,103 @@
+<html lang="en" >
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Angular Material style sheet -->
+  <link rel="stylesheet" href="lib/angular-material.min.css">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+</head>
+<body ng-app="AomInspectorApp" ng-cloak ng-controller="AppCtrl as vm">
+  <style type="text/css">
+    html {
+      font-size: 62.5%;
+      line-height: 1.4;
+    }
+    body {
+      font-size: 1.6em;
+    }
+  </style>
+
+  <md-toolbar class="md-toolbar-tools" style="background-color: #424242;">
+    AOM Inspector
+    <span flex></span>
+    <md-button ng-click="vm.previousFrame()" class="md-icon-button">
+      <i class="material-icons">skip_previous</i>
+    </md-button>
+
+    <md-button ng-click="vm.playPause()" class="md-icon-button">
+      <i class="material-icons">{{vm.isPlaying ? "pause" : "play_arrow"}}</i>
+    </md-button>
+
+    <md-button ng-click="vm.nextFrame()" class="md-icon-button">
+      <i class="material-icons">skip_next</i>
+    </md-button>
+
+    <md-menu-bar>
+      <md-menu>
+        <button ng-click="$mdOpenMenu()" style="color: #ffffff;">
+          View
+        </button>
+        <md-menu-content>
+          <md-menu-item type="checkbox" ng-model="vm.showGrid" ng-change="vm.change()">
+            Show grid
+          </md-menu-item>
+          <md-menu-item type="checkbox" ng-model="vm.showMotionVectors" ng-change="vm.change()">
+            Show motion vectors
+          </md-menu-item>
+          <md-menu-item type="checkbox" ng-model="vm.showImage" ng-change="vm.change()">
+            Show image
+          </md-menu-item>
+          <md-menu-item type="checkbox" ng-model="vm.showDering" ng-change="vm.change()">
+            Show dering
+          </md-menu-item>
+          <md-menu-item class="md-indent">
+            <md-menu>
+              <md-button ng-click="$mdOpenMenu()">Zoom</md-button>
+              <md-menu-content width="3">
+                <md-menu-item type="radio" ng-model="vm.scale" value="1" ng-change="vm.change()">1x</md-menu-item>
+                <md-menu-item type="radio" ng-model="vm.scale" value="2" ng-change="vm.change()">2x</md-menu-item>
+                <md-menu-item type="radio" ng-model="vm.scale" value="4" ng-change="vm.change()">4x</md-menu-item>
+                <md-menu-item type="radio" ng-model="vm.scale" value="8" ng-change="vm.change()">8x</md-menu-item>
+              </md-menu-content>
+            </md-menu>
+          </md-menu-item>
+        </md-menu-content>
+      </md-menu>
+    </md-menu-bar>
+
+    <span flex></span>
+    <span class="md-body-2">Frame {{ vm.frameNumber }}</span>
+    <!-- <i class="material-icons">skip_next</i> -->
+    <!-- <i class="material-icons">play_circle_outline</i> -->
+
+    <!-- <i class="material-icons">skip next</i> -->
+    <!-- <i class="material-icons">skip previous</i> -->
+    <!-- <i class="material-icons">play circle outline</i> -->
+    <!-- <i class="material-icons">play arrow</i> -->
+    <!-- <i class="material-icons">pause circle outline</i> -->
+  </md-toolbar>
+  <div style="position: relative; width: 128px; height: 128px;">
+    <canvas id="display" oncontextmenu="event.preventDefault()" style="position: absolute; left: 0; top: 0; z-index: 0; image-rendering: pixelated;" width=0 height=0></canvas>
+    <canvas id="overlay" oncontextmenu="event.preventDefault()" style="position: absolute; left: 0; top: 0; z-index: 1; image-rendering: pixelated;" width=0 height=0></canvas>
+  </div>
+
+  <!--<div class="inset">
+    <md-switch ng-model="vm.showGrid" aria-label="Grid">
+    Grid
+    </md-switch>
+  </div>-->
+
+  <!-- Angular Material requires Angular.js Libraries -->
+  <script src="lib/angular.min.js"></script>
+  <script src="lib/angular-animate.min.js"></script>
+  <script src="lib/angular-aria.min.js"></script>
+  <script src="lib/angular-messages.min.js"></script>
+
+  <!-- Angular Material Library -->
+  <script src="lib/angular-material.min.js"></script>
+
+
+  <script src="app.js"></script>
+  <script src="decoder.js"></script>
+
+</body>
+</html>

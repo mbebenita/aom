@@ -87,6 +87,7 @@
 #endif
 
 #include "aom/aom_decoder.h"
+#include "aom/aomdx.h"
 
 #include "../tools_common.h"
 #include "../video_reader.h"
@@ -112,6 +113,12 @@ aom_image_t *img = NULL;
 AV1_COMMON *cm = NULL;
 
 int read_frame();
+
+int foo() {
+  int_mv *buffer = aom_malloc(sizeof(int_mv) * 1024);
+  aom_codec_control(&codec, AV1_ANALYZER_SET_GATHER_MI, buffer);
+}
+
 
 EMSCRIPTEN_KEEPALIVE
 int main(int argc, char **argv) {
@@ -139,6 +146,7 @@ int main(int argc, char **argv) {
   if (argc == 4) {
     while (!read_frame()) {
       // ...
+      // printf("MBs: %d\n", z);
     }
   }
 
@@ -257,62 +265,3 @@ void quit() {
 
   fclose(outfile);
 }
-
-
-/*
-int main(int argc, char **argv) {
-  int frame_count = 0;
-  FILE *outfile = NULL;
-  aom_codec_ctx_t codec;
-  AvxVideoReader *reader = NULL;
-  const AvxInterface *decoder = NULL;
-  const AvxVideoInfo *info = NULL;
-
-  exec_name = argv[0];
-
-  if (argc != 3) die("Invalid number of arguments.");
-
-  reader = aom_video_reader_open(argv[1]);
-  if (!reader) die("Failed to open %s for reading.", argv[1]);
-
-  if (!(outfile = fopen(argv[2], "wb")))
-    die("Failed to open %s for writing.", argv[2]);
-
-  info = aom_video_reader_get_info(reader);
-
-  decoder = get_aom_decoder_by_fourcc(info->codec_fourcc);
-  if (!decoder) die("Unknown input codec.");
-
-  printf("Using %s\n", aom_codec_iface_name(decoder->codec_interface()));
-
-  if (aom_codec_dec_init(&codec, decoder->codec_interface(), NULL, 0))
-    die_codec(&codec, "Failed to initialize decoder.");
-
-  while (aom_video_reader_read_frame(reader)) {
-    aom_codec_iter_t iter = NULL;
-    aom_image_t *img = NULL;
-    size_t frame_size = 0;
-    const unsigned char *frame =
-        aom_video_reader_get_frame(reader, &frame_size);
-    if (aom_codec_decode(&codec, frame, (unsigned int)frame_size, NULL, 0))
-      die_codec(&codec, "Failed to decode frame.");
-
-    while ((img = aom_codec_get_frame(&codec, &iter)) != NULL) {
-      aom_img_write(img, outfile);
-      ++frame_count;
-    }
-  }
-
-  printf("Processed %d frames.\n", frame_count);
-  if (aom_codec_destroy(&codec)) die_codec(&codec, "Failed to destroy codec");
-
-  printf("Play: ffplay -f rawvideo -pix_fmt yuv420p -s %dx%d %s\n",
-         info->frame_width, info->frame_height, argv[2]);
-
-  aom_video_reader_close(reader);
-
-  fclose(outfile);
-
-  return EXIT_SUCCESS;
-}
-*/

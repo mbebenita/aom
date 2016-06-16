@@ -23,6 +23,8 @@
 #include "av1/common/onyxc_int.h"
 #include "av1/decoder/dthread.h"
 
+#include "av1/analyzer/av1_analyzer.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -80,6 +82,8 @@ typedef struct AV1Decoder {
   int inv_tile_order;
   int need_resync;   // wait for key/intra-only frame.
   int hold_ref_buf;  // hold the reference buffer.
+
+  AV1AnalyzerData analyzer_data;
 } AV1Decoder;
 
 int av1_receive_compressed_data(struct AV1Decoder *pbi, size_t size,

@@ -2133,6 +2133,7 @@ void av1_decode_frame(AV1Decoder *pbi, const uint8_t *data,
     av1_dering_frame(&pbi->cur_buf->buf, cm, &pbi->mb, cm->dering_level);
   }
 #endif  // CONFIG_DERING
+  av1_analyze_frame(pbi);
 
   if (!xd->corrupted) {
     if (cm->refresh_frame_context == REFRESH_FRAME_CONTEXT_BACKWARD) {

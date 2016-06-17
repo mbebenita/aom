@@ -94,6 +94,7 @@
 #include "./aom_config.h"
 #include "av1/av1_dx_iface.c"
 #include "../av1/common/onyxc_int.h"
+#include "../av1/analyzer/av1_analyzer.h"
 
 
 static const char *exec_name;
@@ -114,9 +115,27 @@ AV1_COMMON *cm = NULL;
 
 int read_frame();
 
-int foo() {
-  int_mv *buffer = aom_malloc(sizeof(int_mv) * 1024);
-  aom_codec_control(&codec, AV1_ANALYZER_SET_GATHER_MI, buffer);
+AV1AnalyzerData analyzer_data;
+
+void init_analyzer() {
+  analyzer_data.mv_grid.buffer = aom_malloc(sizeof(AV1AnalyzerMV) * 2048);
+  analyzer_data.mv_grid.size = 2048;
+}
+
+void dump_analyzer() {
+  aom_codec_control(&codec, AV1_ANALYZER_SET_DATA, &analyzer_data);
+  const int mi_rows = analyzer_data.mi_rows;
+  const int mi_cols = analyzer_data.mi_cols;
+  int r, c;
+  for (r = 0; r < mi_rows; ++r) {
+    for (c = 0; c < mi_cols; ++c) {
+      // AV1AnalyzerMV mv = analyzer_data.mv_grid.buffer[r * mi_cols + c];
+      // printf("%3d:%-3d ", abs(mv.row), abs(mv.col));
+      // printf("%d:%d ", mv.row, mv.col);
+      // ...
+    }
+    printf("\n");
+  }
 }
 
 
@@ -143,10 +162,13 @@ int main(int argc, char **argv) {
   if (aom_codec_dec_init(&codec, decoder->codec_interface(), NULL, 0))
     die_codec(&codec, "Failed to initialize decoder.");
 
+  init_analyzer();
+
   if (argc == 4) {
     while (!read_frame()) {
       // ...
       // printf("MBs: %d\n", z);
+      // dump_analyzer();
     }
   }
 
@@ -158,8 +180,7 @@ int read_frame() {
   if (!aom_video_reader_read_frame(reader)) {
     return EXIT_FAILURE;
   }
-
-  img = NULL;  
+  img = NULL;
   aom_codec_iter_t iter = NULL;
   
   size_t frame_size = 0;

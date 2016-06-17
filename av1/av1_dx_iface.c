@@ -1016,9 +1016,9 @@ static aom_codec_err_t ctrl_set_skip_loop_filter(aom_codec_alg_priv_t *ctx,
   return AOM_CODEC_OK;
 }
 
-static aom_codec_err_t ctrl_analyzer_set_gather_mi(aom_codec_alg_priv_t *ctx,
-                                          va_list args) {
-  int_mv *mv_grid = va_arg(args, int_mv *);
+static aom_codec_err_t ctrl_analyzer_set_data(aom_codec_alg_priv_t *ctx,
+                                              va_list args) {
+  AV1AnalyzerData *data = va_arg(args, AV1AnalyzerData *);
 
 
   if (ctx->frame_parallel_decode) {
@@ -1030,7 +1030,7 @@ static aom_codec_err_t ctrl_analyzer_set_gather_mi(aom_codec_alg_priv_t *ctx,
     AVxWorker *const worker = ctx->frame_workers;
     FrameWorkerData *const frame_worker_data =
       (FrameWorkerData *)worker->data1;
-    frame_worker_data->pbi->analyzer_data.mv_grid = mv_grid;
+    frame_worker_data->pbi->analyzer_data = data;
     return AOM_CODEC_OK;
   } else {
     return AOM_CODEC_ERROR;
@@ -1052,7 +1052,7 @@ static aom_codec_ctrl_fn_map_t decoder_ctrl_maps[] = {
   { AV1_SET_BYTE_ALIGNMENT, ctrl_set_byte_alignment },
   { AV1_SET_SKIP_LOOP_FILTER, ctrl_set_skip_loop_filter },
 
-  { AV1_ANALYZER_SET_GATHER_MI, ctrl_analyzer_set_gather_mi },
+  { AV1_ANALYZER_SET_DATA, ctrl_analyzer_set_data },
 
   // Getters
   { AOMD_GET_LAST_REF_UPDATES, ctrl_get_last_ref_updates },

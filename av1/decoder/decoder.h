@@ -83,7 +83,7 @@ typedef struct AV1Decoder {
   int need_resync;   // wait for key/intra-only frame.
   int hold_ref_buf;  // hold the reference buffer.
 
-  AV1AnalyzerData analyzer_data;
+  AV1AnalyzerData *analyzer_data;
 } AV1Decoder;
 
 int av1_receive_compressed_data(struct AV1Decoder *pbi, size_t size,

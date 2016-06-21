@@ -129,9 +129,9 @@ void dump_analyzer() {
   int r, c;
   for (r = 0; r < mi_rows; ++r) {
     for (c = 0; c < mi_cols; ++c) {
-      // AV1AnalyzerMV mv = analyzer_data.mv_grid.buffer[r * mi_cols + c];
+       AV1AnalyzerMV mv = analyzer_data.mv_grid.buffer[r * mi_cols + c];
       // printf("%3d:%-3d ", abs(mv.row), abs(mv.col));
-      // printf("%d:%d ", mv.row, mv.col);
+       printf("%d:%d ", mv.row, mv.col);
       // ...
     }
     printf("\n");
@@ -142,35 +142,51 @@ void dump_analyzer() {
 EMSCRIPTEN_KEEPALIVE
 int main(int argc, char **argv) {
   
-  exec_name = argv[0];
+//  exec_name = argv[0];
+//
+//  if (argc < 3) die("Invalid number of arguments.");
+//
+//  reader = aom_video_reader_open(argv[1]);
+//  if (!reader) die("Failed to open %s for reading.", argv[1]);
+//
+//  if (!(outfile = fopen(argv[2], "wb")))
+//    die("Failed to open %s for writing.", argv[2]);
+//
+//  info = aom_video_reader_get_info(reader);
+//
+//  decoder = get_aom_decoder_by_fourcc(info->codec_fourcc);
+//  if (!decoder) die("Unknown input codec.");
+//
+//  printf("Using %s\n", aom_codec_iface_name(decoder->codec_interface()));
+//
+//  if (aom_codec_dec_init(&codec, decoder->codec_interface(), NULL, 0))
+//    die_codec(&codec, "Failed to initialize decoder.");
+//
+//  init_analyzer();
+//
+//  if (argc == 4) {
+//    while (!read_frame()) {
+//      dump_analyzer();
+//    }
+//  }
+//
+//  return EXIT_SUCCESS;
+}
 
-  if (argc < 3) die("Invalid number of arguments.");
-
-  reader = aom_video_reader_open(argv[1]);
-  if (!reader) die("Failed to open %s for reading.", argv[1]);
-
-  if (!(outfile = fopen(argv[2], "wb")))
-    die("Failed to open %s for writing.", argv[2]);
+EMSCRIPTEN_KEEPALIVE
+int open_file() {
+  const char *file = "/tmp/input.ivf";
+  reader = aom_video_reader_open(file);
+  if (!reader) die("Failed to open %s for reading.", file);
 
   info = aom_video_reader_get_info(reader);
 
   decoder = get_aom_decoder_by_fourcc(info->codec_fourcc);
   if (!decoder) die("Unknown input codec.");
-
   printf("Using %s\n", aom_codec_iface_name(decoder->codec_interface()));
 
   if (aom_codec_dec_init(&codec, decoder->codec_interface(), NULL, 0))
     die_codec(&codec, "Failed to initialize decoder.");
-
-  init_analyzer();
-
-  if (argc == 4) {
-    while (!read_frame()) {
-      // ...
-      // printf("MBs: %d\n", z);
-      // dump_analyzer();
-    }
-  }
 
   return EXIT_SUCCESS;
 }
@@ -186,9 +202,10 @@ int read_frame() {
   size_t frame_size = 0;
   const unsigned char *frame =
       aom_video_reader_get_frame(reader, &frame_size);
-  if (aom_codec_decode(&codec, frame, (unsigned int)frame_size, NULL, 0) != AOM_CODEC_OK)
+  if (aom_codec_decode(&codec, frame, (unsigned int)frame_size, NULL, 0) != AOM_CODEC_OK) {
     die_codec(&codec, "Failed to decode frame.");
-
+  }
+  aom_codec_control(&codec, AV1_ANALYZER_SET_DATA, &analyzer_data);
   if (0) {
     printf("MBs: %d\n", cm->MBs);
     printf("mi_rows: %d\n", cm->mi_rows);

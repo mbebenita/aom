@@ -10,7 +10,7 @@
 
 #include "av1_analyzer.h"
 
-
+// Saves the decoder state.
 aom_codec_err_t av1_analyze_frame(struct AV1Decoder *pbi) {
   AV1_COMMON *const cm = &pbi->common;
   const int mi_rows = cm->mi_rows;
@@ -19,6 +19,7 @@ aom_codec_err_t av1_analyze_frame(struct AV1Decoder *pbi) {
   if (pbi->analyzer_data == NULL) {
     return AOM_CODEC_OK;
   }
+  // Save motion vectors.
   AV1AnalyzerMVBuffer mv_grid = pbi->analyzer_data->mv_grid;
   if (mv_grid.size > 0) {
     if (mi_rows * mi_cols > mv_grid.size) {
@@ -34,16 +35,7 @@ aom_codec_err_t av1_analyze_frame(struct AV1Decoder *pbi) {
       }
     }
   }
-
   pbi->analyzer_data->mi_rows = mi_rows;
   pbi->analyzer_data->mi_cols = mi_cols;
-
   return AOM_CODEC_OK;
-
-//  return cm->mi_cols;
-//
-//  const MB_MODE_INFO *mbmi =
-//    &cm->mi_grid_visible[r * cm->mi_stride + c]->mbmi;
-//  return mbmi->mv[0].as_mv.row << 16 | mbmi->mv[0].as_mv.col;
-
 }

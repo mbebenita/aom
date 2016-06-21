@@ -15,8 +15,8 @@
       font-size: 1.6em;
     }
   </style>
-
-  <md-toolbar class="md-toolbar-tools" style="background-color: #424242;">
+  <md-progress-linear md-mode="{{vm.progressMode}}"></md-progress-linear>
+  <md-toolbar class="md-toolbar-tools">
     AOM Inspector
     <span flex></span>
     <md-button ng-click="vm.previousFrame()" class="md-icon-button">
@@ -97,7 +97,7 @@
 
 
   <script src="app.js"></script>
-  <script src="decoder.js"></script>
+  <script src="bin/decoder.js"></script>
 
 </body>
 </html>

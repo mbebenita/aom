@@ -11,14 +11,11 @@ typedef struct AV1AnalyzerMV {
 
 typedef struct AV1AnalyzerMVBuffer {
   AV1AnalyzerMV *buffer;
+  // Size in AV1AnalyzerMVs.
   int size;
 } AV1AnalyzerMVBuffer;
 
-//typedef struct AV1AnalyzerData {
-//  uint32_t as_int;
-//  MV as_mv;
-//} int_mv; /* facilitates faster equality tests and copies */
-
+// Holds everything that is needed by the stream analyzer.
 typedef struct AV1AnalyzerData {
   AV1AnalyzerMVBuffer mv_grid;
   int mi_rows;

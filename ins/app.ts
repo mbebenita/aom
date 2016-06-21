@@ -1,4 +1,5 @@
 declare var angular: any;
+declare var FS: any;
 
 interface AOMInternal {
   _read_frame (): number;
@@ -11,6 +12,7 @@ interface AOMInternal {
   _get_mi_mv(c: number, r: number): number;
   _get_dering_gain(c: number, r: number): number;
   _get_frame_count(): number;
+  _open_file(): number;
   HEAPU8: Uint8Array;
 }
 
@@ -19,6 +21,9 @@ class AOM {
   HEAPU8: Uint8Array = this.native.HEAPU8;
   constructor () {
 
+  }
+  open_file () {
+    return this.native._open_file();
   }
   read_frame () {
     return this.native._read_frame();
@@ -126,6 +131,8 @@ class AppCtrl {
   showMotionVectors: boolean = true;
 
   frameNumber: number = 0;
+  progress = 0.5;
+  progressMode = "determinate";
 
   get isPlaying() {
     return !!this.playInterval;
@@ -180,7 +187,36 @@ class AppCtrl {
       }
     });
 
-    this.change();
+    var self = this;
+    this.loadFile("media/sc.ivf", function (buffer: ArrayBuffer) {
+      FS.writeFile("/tmp/input.ivf", new Uint8Array(buffer), { encoding: "binary" });
+      self.openFile();
+      self.nextFrame();
+    });
+  }
+
+  openFile() {
+    this.aom.open_file();
+  }
+
+  loadFile(path: string, next: (buffer: ArrayBuffer) => void) {
+    var xhr = new XMLHttpRequest();
+    var self = this;
+    self.progressMode = "indeterminate";
+    xhr.open("GET", path, true);
+    xhr.responseType = "arraybuffer";
+    xhr.send();
+    xhr.addEventListener("progress", function (e) {
+      var progress = (e.loaded / e.total) * 100;
+      console.info("HERE " + progress);
+    });
+    xhr.addEventListener("load", function () {
+      if (xhr.status != 200) {
+        return;
+      }
+      self.progressMode = "determinate";
+      next(this.response);
+    });
   }
 
   change() {
@@ -194,7 +230,6 @@ class AppCtrl {
     this.frameCanvas.width = this.w;
 		this.frameCanvas.height = this.h;
     this.imageData = this.frameContext.createImageData(this.w, this.h);
-
 
     this.displayCanvas.style.width = (this.w * this.scale) + "px";
 		this.displayCanvas.style.height = (this.h * this.scale) + "px";
@@ -456,7 +491,7 @@ window.Module = {
   postRun: [function() {
     // startVideo();
   }],
-  arguments: ['sc.ivf', 'soccer.out']
+  arguments: ['input.ivf', 'output.raw']
 };
 
 // var script = document.createElement('script');

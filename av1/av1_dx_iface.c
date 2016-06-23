@@ -29,6 +29,7 @@
 #include "av1/decoder/decodeframe.h"
 
 #include "av1/av1_iface_common.h"
+#include "analyzer/av1_analyzer.h"
 
 typedef aom_codec_stream_info_t av1_stream_info_t;
 
@@ -77,6 +78,8 @@ struct aom_codec_alg_priv {
   void *ext_priv;  // Private data associated with the external frame buffers.
   aom_get_frame_buffer_cb_fn_t get_ext_fb_cb;
   aom_release_frame_buffer_cb_fn_t release_ext_fb_cb;
+
+  AV1AnalyzerData *analyzer_data;
 };
 
 static aom_codec_err_t decoder_init(aom_codec_ctx_t *ctx,
@@ -466,6 +469,7 @@ static aom_codec_err_t decode_one(aom_codec_alg_priv_t *ctx,
     // decrypt config between frames.
     frame_worker_data->pbi->decrypt_cb = ctx->decrypt_cb;
     frame_worker_data->pbi->decrypt_state = ctx->decrypt_state;
+    frame_worker_data->pbi->analyzer_data = ctx->analyzer_data;
 
     worker->had_error = 0;
     winterface->execute(worker);
@@ -1018,23 +1022,9 @@ static aom_codec_err_t ctrl_set_skip_loop_filter(aom_codec_alg_priv_t *ctx,
 
 static aom_codec_err_t ctrl_analyzer_set_data(aom_codec_alg_priv_t *ctx,
                                               va_list args) {
-  AV1AnalyzerData *data = va_arg(args, AV1AnalyzerData *);
-
-
-  if (ctx->frame_parallel_decode) {
-    set_error_detail(ctx, "Not supported in frame parallel decode");
-    return AOM_CODEC_INCAPABLE;
-  }
-
-  if (ctx->frame_workers) {
-    AVxWorker *const worker = ctx->frame_workers;
-    FrameWorkerData *const frame_worker_data =
-      (FrameWorkerData *)worker->data1;
-    frame_worker_data->pbi->analyzer_data = data;
-    return AOM_CODEC_OK;
-  } else {
-    return AOM_CODEC_ERROR;
-  }
+  AV1AnalyzerData *analyzer_data = va_arg(args, AV1AnalyzerData *);
+  ctx->analyzer_data = analyzer_data;
+  return AOM_CODEC_OK;
 }
 
 static aom_codec_ctrl_fn_map_t decoder_ctrl_maps[] = {

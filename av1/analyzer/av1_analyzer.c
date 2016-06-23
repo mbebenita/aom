@@ -19,6 +19,10 @@ aom_codec_err_t av1_analyze_frame(struct AV1Decoder *pbi) {
   if (pbi->analyzer_data == NULL) {
     return AOM_CODEC_OK;
   }
+
+  pbi->analyzer_data->mi_rows = mi_rows;
+  pbi->analyzer_data->mi_cols = mi_cols;
+
   // Save motion vectors.
   AV1AnalyzerMVBuffer mv_grid = pbi->analyzer_data->mv_grid;
   if (mv_grid.size > 0) {
@@ -35,7 +39,12 @@ aom_codec_err_t av1_analyze_frame(struct AV1Decoder *pbi) {
       }
     }
   }
-  pbi->analyzer_data->mi_rows = mi_rows;
-  pbi->analyzer_data->mi_cols = mi_cols;
+  // Save image planes.
+  for (int i = 0; i < 4; i++) {
+//    if (pbi->analyzer_data.planes[i] != NULL) {
+//      continue;
+//    }
+
+  }
   return AOM_CODEC_OK;
 }

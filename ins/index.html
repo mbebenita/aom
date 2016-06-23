@@ -1,62 +1,71 @@
-<html lang="en" >
+<html>
+
 <head>
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- Angular Material style sheet -->
   <link rel="stylesheet" href="lib/angular-material.min.css">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-</head>
-<body ng-app="AomInspectorApp" ng-cloak ng-controller="AppCtrl as vm">
   <style type="text/css">
     html {
       font-size: 62.5%;
       line-height: 1.4;
     }
+
     body {
       font-size: 1.6em;
     }
+
+    tr {
+      font-size: 14px;
+    }
   </style>
-  <md-progress-linear md-mode="{{vm.progressMode}}"></md-progress-linear>
-  <md-toolbar class="md-toolbar-tools">
-    AOM Inspector
-    <span flex></span>
-    <md-button ng-click="vm.previousFrame()" class="md-icon-button">
-      <i class="material-icons">skip_previous</i>
-    </md-button>
+</head>
 
-    <md-button ng-click="vm.playPause()" class="md-icon-button">
-      <i class="material-icons">{{vm.isPlaying ? "pause" : "play_arrow"}}</i>
-    </md-button>
-
-    <md-button ng-click="vm.nextFrame()" class="md-icon-button">
-      <i class="material-icons">skip_next</i>
-    </md-button>
-
+<body ng-app="AomInspectorApp" ng-cloak ng-controller="AppCtrl as vm" layout="rows">
+  <div flex layout="column">
+    <!--Progress Bar-->
+    <md-progress-linear md-mode="{{vm.progressMode}}" value="{{vm.determinateValue}}"></md-progress-linear>
+    <!--Menu-->
     <md-menu-bar>
       <md-menu>
-        <button ng-click="$mdOpenMenu()" style="color: #ffffff;">
-          View
-        </button>
+        <button ng-click="$mdOpenMenu()">
+            File
+          </button>
         <md-menu-content>
-          <md-menu-item type="checkbox" ng-model="vm.showGrid" ng-change="vm.change()">
+          <md-menu-item>
+            <md-button ng-click="vm.uiAction('open', $event)">
+              Open...
+              <!--<span class="md-alt-text"> {{ 'M-O' | keyboardShortcut }}</span>-->
+            </md-button>
+          </md-menu-item>
+        </md-menu-content>
+      </md-menu>
+      <md-menu>
+        <button ng-click="$mdOpenMenu()">
+            View
+          </button>
+        <md-menu-content>
+          <md-menu-item type="checkbox" ng-model="vm.showGrid" ng-change="vm.uiViewChange()">
             Show grid
           </md-menu-item>
-          <md-menu-item type="checkbox" ng-model="vm.showMotionVectors" ng-change="vm.change()">
+          <md-menu-item type="checkbox" ng-model="vm.showMotionVectors" ng-change="vm.uiViewChange()">
             Show motion vectors
           </md-menu-item>
-          <md-menu-item type="checkbox" ng-model="vm.showImage" ng-change="vm.change()">
+          <md-menu-item type="checkbox" ng-model="vm.showImage" ng-change="vm.uiViewChange()">
             Show image
           </md-menu-item>
-          <md-menu-item type="checkbox" ng-model="vm.showDering" ng-change="vm.change()">
+          <md-menu-item type="checkbox" ng-model="vm.showDering" ng-change="vm.uiViewChange()">
             Show dering
           </md-menu-item>
           <md-menu-item class="md-indent">
             <md-menu>
               <md-button ng-click="$mdOpenMenu()">Zoom</md-button>
               <md-menu-content width="3">
-                <md-menu-item type="radio" ng-model="vm.scale" value="1" ng-change="vm.change()">1x</md-menu-item>
-                <md-menu-item type="radio" ng-model="vm.scale" value="2" ng-change="vm.change()">2x</md-menu-item>
-                <md-menu-item type="radio" ng-model="vm.scale" value="4" ng-change="vm.change()">4x</md-menu-item>
-                <md-menu-item type="radio" ng-model="vm.scale" value="8" ng-change="vm.change()">8x</md-menu-item>
+                <md-menu-item type="radio" ng-model="vm.scale" value="1" ng-change="vm.uiViewChange()">1x</md-menu-item>
+                <md-menu-item type="radio" ng-model="vm.scale" value="2" ng-change="vm.uiViewChange()">2x</md-menu-item>
+                <md-menu-item type="radio" ng-model="vm.scale" value="4" ng-change="vm.uiViewChange()">4x</md-menu-item>
+                <md-menu-item type="radio" ng-model="vm.scale" value="8" ng-change="vm.uiViewChange()">8x</md-menu-item>
               </md-menu-content>
             </md-menu>
           </md-menu-item>
@@ -64,27 +73,70 @@
       </md-menu>
     </md-menu-bar>
 
-    <span flex></span>
-    <span class="md-body-2">Frame {{ vm.frameNumber }}</span>
-    <!-- <i class="material-icons">skip_next</i> -->
-    <!-- <i class="material-icons">play_circle_outline</i> -->
+    <!--Toolbar-->
+    <md-toolbar class="md-toolbar-tools" style="background-color:">
+      AOM Inspector
+      <span flex></span>
+      <md-button ng-click="vm.uiPreviousFrame()" class="md-icon-button">
+        <i class="material-icons">skip_previous</i>
+      </md-button>
 
-    <!-- <i class="material-icons">skip next</i> -->
-    <!-- <i class="material-icons">skip previous</i> -->
-    <!-- <i class="material-icons">play circle outline</i> -->
-    <!-- <i class="material-icons">play arrow</i> -->
-    <!-- <i class="material-icons">pause circle outline</i> -->
-  </md-toolbar>
-  <div style="position: relative; width: 128px; height: 128px;">
-    <canvas id="display" oncontextmenu="event.preventDefault()" style="position: absolute; left: 0; top: 0; z-index: 0; image-rendering: pixelated;" width=0 height=0></canvas>
-    <canvas id="overlay" oncontextmenu="event.preventDefault()" style="position: absolute; left: 0; top: 0; z-index: 1; image-rendering: pixelated;" width=0 height=0></canvas>
+      <md-button ng-click="vm.uiPlayPause()" class="md-icon-button">
+        <i class="material-icons">{{vm.isPlaying ? "pause" : "play_arrow"}}</i>
+      </md-button>
+
+      <md-button ng-click="vm.uiNextFrame()" class="md-icon-button">
+        <i class="material-icons">skip_next</i>
+      </md-button>
+
+      <span flex></span>
+    </md-toolbar>
+
+    <div flex layout="row">
+      <md-sidenav class="md-sidenav-left md-whiteframe-z2" md-component-id="left" md-is-locked-open="true">
+        <md-content layout-padding>
+          <table>
+            <tr>
+              <td>Frame</td><td>{{ vm.frameNumber }}</td>
+            </tr>
+            <tr>
+              <td>Scale</td><td>{{ vm.scale }}</td>
+            </tr>
+            <tr>
+              <td>Ratio</td><td>{{ vm.ratio }}</td>
+            </tr>
+            <tr>
+              <td>Size</td><td>{{ vm.size.w }} x {{ vm.size.h }}</td>
+            </tr>
+            <tr>
+              <td>File Size</td><td>{{ vm.fileSize }}</td>
+            </tr>
+            <tr>
+              <td>Last Decode Time</td><td>{{ vm.lastDecodeFrameTime.toFixed(2) }}</td>
+            </tr>
+          </table>
+        </md-content>
+      </md-sidenav>
+      <md-content flex layout="row" style="overflow: scroll;">
+        <div id="container" style="position: relative; width: 128px; height: 128px;">
+          <canvas id="display" oncontextmenu="event.preventDefault()" style="position: absolute; left: 0; top: 0; z-index: 0; image-rendering: pixelated; background-color: #F5F5F5;"
+            width=0 height=0></canvas>
+          <canvas id="overlay" oncontextmenu="event.preventDefault()" style="position: absolute; left: 0; top: 0; z-index: 1; image-rendering: pixelated;"
+            width=0 height=0></canvas>
+        </div>
+      </md-content>
+    </div>
   </div>
+
+
 
   <!--<div class="inset">
     <md-switch ng-model="vm.showGrid" aria-label="Grid">
     Grid
     </md-switch>
   </div>-->
+
+
 
   <!-- Angular Material requires Angular.js Libraries -->
   <script src="lib/angular.min.js"></script>
@@ -97,7 +149,9 @@
 
 
   <script src="app.js"></script>
+  <script src="lib/mousetrap.min.js"></script>
   <script src="bin/decoder.js"></script>
 
 </body>
+
 </html>

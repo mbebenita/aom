@@ -1,5 +1,6 @@
 declare var angular: any;
 declare var FS: any;
+declare var Mousetrap: any;
 
 interface AOMInternal {
   _read_frame (): number;
@@ -12,6 +13,8 @@ interface AOMInternal {
   _get_mi_mv(c: number, r: number): number;
   _get_dering_gain(c: number, r: number): number;
   _get_frame_count(): number;
+  _get_frame_width(): number;
+  _get_frame_height(): number;
   _open_file(): number;
   HEAPU8: Uint8Array;
 }
@@ -54,6 +57,15 @@ class AOM {
   }
   get_frame_count(): number {
     return this.native._get_frame_count();
+  }
+  getFrameSize(): Size {
+    return new Size(this.native._get_frame_width(), this.native._get_frame_height());
+  }
+}
+
+class Size {
+  constructor(public w: number, public h: number) {
+    // ...
   }
 }
 
@@ -118,31 +130,32 @@ class Vector {
 
 class AppCtrl {
   aom: AOM = null;
-  w: number = 128;
-  h: number = 128;
-
+  size: Size = new Size(128, 128);
+  fileSize: number = 0;
   ratio: number = 1;
   scale: number = 1;
 
-
-  showGrid: boolean = true;
-  showDering: boolean = true;
+  showGrid: boolean = false;
+  showDering: boolean = false;
   showImage: boolean = true;
-  showMotionVectors: boolean = true;
+  showMotionVectors: boolean = false;
 
   frameNumber: number = 0;
-  progress = 0.5;
+
+  progressValue = 0;
   progressMode = "determinate";
 
   get isPlaying() {
     return !!this.playInterval;
   }
 
+  // If not zero, we are playing frames.
   playInterval: number = 0;
 
   container: HTMLDivElement;
   displayCanvas: HTMLCanvasElement;
   overlayCanvas: HTMLCanvasElement;
+
   displayContext: CanvasRenderingContext2D = null;
   overlayContext: CanvasRenderingContext2D = null;
   imageData: ImageData = null;
@@ -150,6 +163,7 @@ class AppCtrl {
   frameCanvas: HTMLCanvasElement;
   frameContext: CanvasRenderingContext2D = null;
 
+  lastDecodeFrameTime: number = 0;
   $scope: any;
   $interval: any;
 
@@ -158,7 +172,9 @@ class AppCtrl {
     this.$interval = $interval;
     this.ratio = window.devicePixelRatio || 1;
     this.scale = this.ratio;
-    this.scale *= 2;
+    // this.scale *= 2;
+
+    this.container = <HTMLDivElement>document.getElementById("container");
 
     this.displayCanvas = <HTMLCanvasElement>document.getElementById("display");
     this.displayContext = this.displayCanvas.getContext("2d");
@@ -169,105 +185,185 @@ class AppCtrl {
     this.frameCanvas = document.createElement("canvas");
     this.frameContext = this.frameCanvas.getContext("2d");
 
-    this.aom = new AOM();
-    this.nextFrame();
-
     var parameters = getUrlParameters();
-    if (parameters.frameNumber) {
-      var frameNumber = parseInt(parameters.frameNumber);
-      var self = this;
-      this.$interval(function () {
-        self.nextFrame();
-      }, 1, frameNumber - 1);
-    }
-
     ["showGrid", "showDering", "showImage", "showMotionVectors"].forEach(x => {
       if (x in parameters) {
         this[x] = parameters[x] == "true";
       }
     });
+    var frames = parseInt(parameters.frameNumber) || 1;
+
+    this.aom = new AOM();
+    this.openFile("media/soccer_cif_dering.ivf", () => {
+      this.playFrameAsync(frames, () => {
+        this.drawFrame();
+      })
+    });
+
+    this.installKeyboardShortcuts();
+  }
+
+  installKeyboardShortcuts() {
+    Mousetrap.bind(['ctrl+right'], this.uiNextFrame.bind(this));
+    Mousetrap.bind(['space'], this.uiPlayPause.bind(this));
+
+    Mousetrap.bind([']'], () => {
+      this.scale *= 2;
+      this.resetCanvases();
+      this.drawFrame();
+      this.uiApply();
+    });
+
+    Mousetrap.bind(['['], () => {
+      this.scale /= 2;
+      this.resetCanvases();
+      this.drawFrame();
+      this.uiApply();
+    });
 
     var self = this;
-    this.loadFile("media/sc.ivf", function (buffer: ArrayBuffer) {
-      FS.writeFile("/tmp/input.ivf", new Uint8Array(buffer), { encoding: "binary" });
-      self.openFile();
-      self.nextFrame();
+    function toggle(name) {
+      self[name] = !self[name];
+      self.drawFrame();
+    }
+
+    Mousetrap.bind(['1'], toggle.bind(this, "showGrid"));
+    Mousetrap.bind(['2'], toggle.bind(this, "showMotionVectors"));
+    Mousetrap.bind(['3'], toggle.bind(this, "showImage"));
+    Mousetrap.bind(['4'], toggle.bind(this, "showDering"));
+  }
+
+  openFile(path: string, next: () => any = null) {
+    this.downloadFile(path, (buffer: Uint8Array) => {
+      this.fileSize = buffer.length;
+      FS.writeFile("/tmp/input.ivf", buffer, { encoding: "binary" });
+      this.aom.open_file();
+      this.size = this.aom.getFrameSize();
+      this.resetCanvases();
+      next();
     });
   }
 
-  openFile() {
-    this.aom.open_file();
+  resetCanvases() {
+    this.frameCanvas.width = this.size.w;
+		this.frameCanvas.height = this.size.h;
+
+    this.imageData = this.frameContext.createImageData(this.size.w, this.size.h);
+
+    this.container.style.width = (this.size.w * this.scale) + "px";
+		this.container.style.height = (this.size.h * this.scale) + "px";
+
+    this.displayCanvas.style.width = (this.size.w * this.scale) + "px";
+		this.displayCanvas.style.height = (this.size.h * this.scale) + "px";
+    this.displayCanvas.width = this.size.w * this.scale * this.ratio;
+		this.displayCanvas.height = this.size.h * this.scale * this.ratio;
+
+    this.overlayCanvas.style.width = (this.size.w * this.scale) + "px";
+		this.overlayCanvas.style.height = (this.size.h * this.scale) + "px";
+    this.overlayCanvas.width = this.size.w * this.scale * this.ratio;
+		this.overlayCanvas.height = this.size.h * this.scale * this.ratio;
   }
 
-  loadFile(path: string, next: (buffer: ArrayBuffer) => void) {
+  downloadFile(path: string, next: (buffer: Uint8Array) => void) {
     var xhr = new XMLHttpRequest();
     var self = this;
-    self.progressMode = "indeterminate";
+    self.progressMode = "determinate";
     xhr.open("GET", path, true);
     xhr.responseType = "arraybuffer";
     xhr.send();
-    xhr.addEventListener("progress", function (e) {
+    xhr.addEventListener("progress", (e) => {
       var progress = (e.loaded / e.total) * 100;
-      console.info("HERE " + progress);
+      this.progressValue = progress;
+      this.$scope.$apply();
     });
     xhr.addEventListener("load", function () {
       if (xhr.status != 200) {
         return;
       }
-      self.progressMode = "determinate";
-      next(this.response);
+      next(new Uint8Array(this.response));
     });
   }
 
-  change() {
-    this.setScale(this.scale);
-    this.showFrame();
+  uiAction(name) {
+    switch (name) {
+      case "open":
+        this.openFile("media/tiger.ivf", () => {
+          this.playFrameAsync(1, () => {
+            this.drawFrame();
+          })
+        });
+      break;
+    }
   }
 
-  setScale(scale: number) {
-    this.scale = scale;
-
-    this.frameCanvas.width = this.w;
-		this.frameCanvas.height = this.h;
-    this.imageData = this.frameContext.createImageData(this.w, this.h);
-
-    this.displayCanvas.style.width = (this.w * this.scale) + "px";
-		this.displayCanvas.style.height = (this.h * this.scale) + "px";
-    this.displayCanvas.width = this.w * this.scale * this.ratio;
-		this.displayCanvas.height = this.h * this.scale * this.ratio;
-
-    this.overlayCanvas.style.width = (this.w * this.scale) + "px";
-		this.overlayCanvas.style.height = (this.h * this.scale) + "px";
-    this.overlayCanvas.width = this.w * this.scale * this.ratio;
-		this.overlayCanvas.height = this.h * this.scale * this.ratio;
+  uiViewChange() {
+    this.resetCanvases();
+    this.drawFrame();
   }
 
   playPause() {
-    var self = this;
     if (this.playInterval) {
       this.$interval.cancel(this.playInterval);
       this.playInterval = 0;
       return;
     }
-    this.playInterval = this.$interval(function () {
-      self.nextFrame();
-    }, 30);
+    this.playInterval = this.$interval(() => {
+      this.playFrame();
+      this.drawFrame();
+    }, 1);
   }
 
-  nextFrame() {
-    if (this.aom.read_frame()) {
-      return false;
-    }
-    this.showFrame();
-    this.frameNumber ++;
+  playFrameAsync(count: number, step: () => void = null, stop: () => void = null) {
+    this.$interval(() => {
+      this.playFrame();
+      step && step();
+      if (--count == 0) {
+        stop && stop();
+      }
+    }, 1, count);
   }
 
-  showFrame() {
-    if (this.frameNumber === 0) {
-      this.w = this.aom.get_plane_width(0);
-		  this.h = this.aom.get_plane_height(0);
-      this.setScale(this.scale);
+  playFrame(count: number = 1) {
+    for (var i = 0; i < count; i++) {
+      var s = performance.now();
+      if (this.aom.read_frame()) {
+        return false;
+      }
+      this.lastDecodeFrameTime = performance.now() - s;
+      this.frameNumber ++;
     }
+  }
+
+  uiApply() {
+    this.$scope.$apply();
+  }
+
+  uiPreviousFrame() {
+    this.uiApply();
+  }
+
+  uiPlayPause() {
+    this.playPause();
+  }
+
+  uiNextFrame() {
+    this.playFrame();
+    this.drawFrame();
+    this.uiApply();
+  }
+
+  drawFrame() {
+    this.clearImage();
+    this.drawImage();
+    this.drawLayers();
+  }
+
+  clearImage() {
+    var ctx = this.displayContext;
+    ctx.clearRect(0, 0, this.size.w * this.scale * this.ratio, this.size.h * this.scale * this.ratio);
+  }
+
+  drawImage() {
     var Yp = this.aom.get_plane(0);
     var Ys = this.aom.get_plane_stride(0);
     var Up = this.aom.get_plane(1);
@@ -275,29 +371,29 @@ class AppCtrl {
     var Vp = this.aom.get_plane(2);
     var Vs = this.aom.get_plane_stride(2);
 
-    var H = this.aom.HEAPU8;
     var I = this.imageData.data;
+    var H = this.aom.HEAPU8;
 
-    var w = this.w;
-    var h = this.h;
+    var w = this.size.w;
+    var h = this.size.h;
 
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         var index = (y * w + x) * 4;
 
-        var Y = H[Yp + y*Ys + x];
-        var U = H[Up + (y>>1)*Us + (x>>1)];
-        var V = H[Vp + (y>>1)*Vs + (x>>1)];
+        var Y = H[Yp + y * Ys + x];
+        var U = H[Up + (y >> 1) * Us + (x >> 1)];
+        var V = H[Vp + (y >> 1) * Vs + (x >> 1)];
 
-        var bgr = yuv2rgb(Y, U, V);
+        var bgr = YUV2RGB(Y, U, V);
 
         var r = (bgr >>  0) & 0xFF;
         var g = (bgr >>  8) & 0xFF;
         var b = (bgr >> 16) & 0xFF;
 
-        I[index + 0] = r; // r
-        I[index + 1] = g; // g
-        I[index + 2] = b; // b
+        I[index + 0] = r;
+        I[index + 1] = g;
+        I[index + 2] = b;
         I[index + 3] = 255;
       }
     }
@@ -306,17 +402,17 @@ class AppCtrl {
       this.frameContext.putImageData(this.imageData, 0, 0);
       this.displayContext.mozImageSmoothingEnabled = false;
       this.displayContext.imageSmoothingEnabled = false;
-      this.displayContext.drawImage(this.frameCanvas, 0, 0, this.w * this.scale * this.ratio, this.h * this.scale * this.ratio);
+      this.displayContext.drawImage(this.frameCanvas, 0, 0, this.size.w * this.scale * this.ratio, this.size.h * this.scale * this.ratio);
     }
 
-    this.draw();
+    this.drawLayers();
   }
 
-  draw() {
+  drawLayers() {
     var ctx = this.overlayContext;
     var ratio = window.devicePixelRatio || 1;
 
-    ctx.clearRect(0, 0, this.w * this.scale * ratio, this.h * this.scale * ratio);
+    ctx.clearRect(0, 0, this.size.w * this.scale * ratio, this.size.h * this.scale * ratio);
 
     this.showGrid && this.drawGrid();
     this.showMotionVectors && this.drawMotionVectors();
@@ -356,12 +452,12 @@ class AppCtrl {
     for (var c = 0; c < cols + 1; c++) {
       var offset = lineOffset + c * s;
       ctx.moveTo(offset, 0);
-      ctx.lineTo(offset, this.h * scale * ratio);
+      ctx.lineTo(offset, this.size.h * scale * ratio);
     }
     for (var r = 0; r < rows + 1; r++) {
       var offset = lineOffset + r * s;
       ctx.moveTo(0, offset);
-      ctx.lineTo(this.w * scale * ratio, offset);
+      ctx.lineTo(this.size.w * scale * ratio, offset);
     }
     ctx.lineWidth = lineWidth;
     ctx.closePath();
@@ -456,7 +552,7 @@ function clamp(v, a, b) {
 	return v;
 }
 
-function yuv2rgb(yValue, uValue, vValue) {
+function YUV2RGB(yValue, uValue, vValue) {
   var rTmp = yValue + (1.370705 * (vValue - 128));
   var gTmp = yValue - (0.698001 * (vValue - 128)) - (0.337633 * (uValue - 128));
   var bTmp = yValue + (1.732446 * (uValue - 128));
@@ -477,13 +573,32 @@ function getUrlParameters(): any {
   return params;
 };
 
-angular.module('AomInspectorApp', ['ngMaterial'])
-.controller('AppCtrl', ['$scope', '$interval', AppCtrl])
+angular
+.module('AomInspectorApp', ['ngMaterial'])
 .config(['$mdIconProvider', function($mdIconProvider) {
     $mdIconProvider
       // .iconSet('social', 'img/icons/sets/social-icons.svg', 24)
       .defaultIconSet('img/icons/sets/core-icons.svg', 24);
-}]);
+}])
+.filter('keyboardShortcut', function($window) {
+  return function(str) {
+    if (!str) return;
+    var keys = str.split('-');
+    var isOSX = /Mac OS X/.test($window.navigator.userAgent);
+    var seperator = (!isOSX || keys.length > 2) ? '+' : '';
+    var abbreviations = {
+      M: isOSX ? '⌘' : 'Ctrl',
+      A: isOSX ? 'Option' : 'Alt',
+      S: 'Shift'
+    };
+    return keys.map(function(key, index) {
+      var last = index == keys.length - 1;
+      return last ? key : abbreviations[key];
+    }).join(seperator);
+  };
+})
+.controller('AppCtrl', ['$scope', '$interval', AppCtrl])
+;
 
 window.Module = {
   noExitRuntime: true,
@@ -491,6 +606,7 @@ window.Module = {
   postRun: [function() {
     // startVideo();
   }],
+  memoryInitializerPrefixURL: "bin/",
   arguments: ['input.ivf', 'output.raw']
 };
 

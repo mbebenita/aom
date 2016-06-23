@@ -4,6 +4,11 @@
 
 struct AV1Decoder;
 
+typedef struct AV1Image {
+  unsigned char *planes[4];
+  int stride[4];
+} AV1Image;
+
 typedef struct AV1AnalyzerMV {
   int16_t row;
   int16_t col;
@@ -17,9 +22,12 @@ typedef struct AV1AnalyzerMVBuffer {
 
 // Holds everything that is needed by the stream analyzer.
 typedef struct AV1AnalyzerData {
+  AV1Image image;
   AV1AnalyzerMVBuffer mv_grid;
   int mi_rows;
   int mi_cols;
+
+
 } AV1AnalyzerData;
 
 

@@ -95,6 +95,7 @@
 #include "av1/av1_dx_iface.c"
 #include "../av1/common/onyxc_int.h"
 #include "../av1/analyzer/av1_analyzer.h"
+#include "../video_common.h"
 
 
 static const char *exec_name;
@@ -118,8 +119,9 @@ int read_frame();
 AV1AnalyzerData analyzer_data;
 
 void init_analyzer() {
-  analyzer_data.mv_grid.buffer = aom_malloc(sizeof(AV1AnalyzerMV) * 2048);
-  analyzer_data.mv_grid.size = 2048;
+  const int mi_count = info->frame_width * info->frame_height / 64;
+  analyzer_data.mv_grid.buffer = aom_malloc(sizeof(AV1AnalyzerMV) * mi_count);
+  analyzer_data.mv_grid.size = mi_count;
 }
 
 void dump_analyzer() {
@@ -138,44 +140,11 @@ void dump_analyzer() {
   }
 }
 
-
 EMSCRIPTEN_KEEPALIVE
-int main(int argc, char **argv) {
-  
-//  exec_name = argv[0];
-//
-//  if (argc < 3) die("Invalid number of arguments.");
-//
-//  reader = aom_video_reader_open(argv[1]);
-//  if (!reader) die("Failed to open %s for reading.", argv[1]);
-//
-//  if (!(outfile = fopen(argv[2], "wb")))
-//    die("Failed to open %s for writing.", argv[2]);
-//
-//  info = aom_video_reader_get_info(reader);
-//
-//  decoder = get_aom_decoder_by_fourcc(info->codec_fourcc);
-//  if (!decoder) die("Unknown input codec.");
-//
-//  printf("Using %s\n", aom_codec_iface_name(decoder->codec_interface()));
-//
-//  if (aom_codec_dec_init(&codec, decoder->codec_interface(), NULL, 0))
-//    die_codec(&codec, "Failed to initialize decoder.");
-//
-//  init_analyzer();
-//
-//  if (argc == 4) {
-//    while (!read_frame()) {
-//      dump_analyzer();
-//    }
-//  }
-//
-//  return EXIT_SUCCESS;
-}
-
-EMSCRIPTEN_KEEPALIVE
-int open_file() {
-  const char *file = "/tmp/input.ivf";
+int open_file(char *file) {
+  if (file == NULL) {
+    file = "/tmp/input.ivf";
+  }
   reader = aom_video_reader_open(file);
   if (!reader) die("Failed to open %s for reading.", file);
 
@@ -188,6 +157,10 @@ int open_file() {
   if (aom_codec_dec_init(&codec, decoder->codec_interface(), NULL, 0))
     die_codec(&codec, "Failed to initialize decoder.");
 
+  init_analyzer();
+  aom_codec_control(&codec, AV1_ANALYZER_SET_DATA, &analyzer_data);
+
+  printf("Opened file %s okay.\n", file);
   return EXIT_SUCCESS;
 }
 
@@ -205,30 +178,11 @@ int read_frame() {
   if (aom_codec_decode(&codec, frame, (unsigned int)frame_size, NULL, 0) != AOM_CODEC_OK) {
     die_codec(&codec, "Failed to decode frame.");
   }
-  aom_codec_control(&codec, AV1_ANALYZER_SET_DATA, &analyzer_data);
-  if (0) {
-    printf("MBs: %d\n", cm->MBs);
-    printf("mi_rows: %d\n", cm->mi_rows);
-    printf("mi_rows: %d\n", cm->mi_rows);
-
-    for (int r = 0; r < cm->mi_rows; r++) {
-      for (int c = 0; c < cm->mi_rows; c++) {
-        const MB_MODE_INFO *mbmi =
-            &cm->mi_grid_visible[r * cm->mi_stride + c]->mbmi;
-        printf("%d,%d ", mbmi->mv[0].as_mv.row, mbmi->mv[0].as_mv.col);
-      }
-      printf("\n");
-    }
-  }
-
   img = aom_codec_get_frame(&codec, &iter);
   if (img == NULL) {
     return EXIT_FAILURE;
   }
-  // aom_img_write(img, outfile);
   ++frame_count;
-  printf("Processing Frame: %d\n", frame_count);
-
   aom_codec_alg_priv_t* t = (aom_codec_alg_priv_t*)codec.priv;
   AVxWorker *const worker = &t->frame_workers[0];
   FrameWorkerData *const frame_worker_data = (FrameWorkerData *)worker->data1;
@@ -254,9 +208,9 @@ int get_mi_cols() {
 
 EMSCRIPTEN_KEEPALIVE
 int get_mi_mv(int c, int r) {
-  const MB_MODE_INFO *mbmi =
-    &cm->mi_grid_visible[r * cm->mi_stride + c]->mbmi;
-  return mbmi->mv[0].as_mv.row << 16 | mbmi->mv[0].as_mv.col;
+  AV1AnalyzerMV *mv =
+    &analyzer_data.mv_grid.buffer[r * analyzer_data.mi_cols + c];
+  return mv->row << 16 | mv->col;
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -288,6 +242,28 @@ int get_plane_width(int plane) {
 EMSCRIPTEN_KEEPALIVE
 int get_plane_height(int plane) {
   return aom_img_plane_height(img, plane);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int get_frame_width() {
+  return info->frame_width;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int get_frame_height() {
+  return info->frame_height;
+}
+
+
+EMSCRIPTEN_KEEPALIVE
+int main(int argc, char **argv) {
+  // ...
+  if (argc == 2) {
+    open_file(argv[1]);
+    while (!read_frame()) {
+      printf("%d\n", frame_count);
+    }
+  }
 }
 
 EMSCRIPTEN_KEEPALIVE

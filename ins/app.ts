@@ -211,7 +211,7 @@ class AppCtrl {
   overlayContext: CanvasRenderingContext2D = null;
   zoomContext: CanvasRenderingContext2D = null;
   zoomSize = 512;
-  mousePosition: Vector;
+  mousePosition: Vector = new Vector(0, 0);
   imageData: ImageData = null;
 
   frameCanvas: HTMLCanvasElement;
@@ -297,13 +297,16 @@ class AppCtrl {
   }
 
   installKeyboardShortcuts() {
-    Mousetrap.bind(['ctrl+right'], () => {
+    Mousetrap.bind(['.'], () => {
       this.playFrame();
       this.drawFrame();
       this.uiApply();
     });
 
-    Mousetrap.bind(['space'], this.uiPlayPause.bind(this));
+    Mousetrap.bind(['space'], (e) => {
+      this.uiPlayPause();
+      e.preventDefault();
+    });
 
     Mousetrap.bind([']'], () => {
       this.scale *= 2;
@@ -346,6 +349,7 @@ class AppCtrl {
     // console.info(getMousePosition(this.overlayCanvas, event));
     this.mousePosition = getMousePosition(this.overlayCanvas, event);
     this.drawZoom();
+    this.uiApply();
   }
 
   getMI(): Vector {
@@ -522,8 +526,6 @@ class AppCtrl {
     this.zoomContext.drawImage(this.frameCanvas,
       x - halfSize, y - halfSize, size, size,
       0, 0, this.zoomSize * this.ratio, this.zoomSize * this.ratio);
-
-    this.uiApply();
   }
 
   drawFrame() {

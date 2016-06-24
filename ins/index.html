@@ -19,10 +19,12 @@
     tr {
       font-size: 14px;
     }
+    #fileInput { display: none; }
   </style>
 </head>
 
 <body ng-app="AomInspectorApp" ng-cloak ng-controller="AppCtrl as vm" layout="rows">
+  <input id="fileInput" type="file" onchange="angular.element(this).scope().fileInputNameChanged(this)">
   <div flex layout="column">
     <!--Progress Bar-->
     <md-progress-linear md-mode="{{vm.progressMode}}" value="{{vm.determinateValue}}"></md-progress-linear>
@@ -34,17 +36,22 @@
           </button>
         <md-menu-content>
           <md-menu-item>
-            <md-button ng-click="vm.uiAction('open', $event)">
+            <md-button ng-click="vm.uiAction('open-file', $event)">
+              Open ...
+            </md-button>
+          </md-menu-item>
+          <md-menu-item>
+            <md-button ng-click="vm.uiAction('open-soccer', $event)">
               Open Soccer
             </md-button>
           </md-menu-item>
           <md-menu-item>
-            <md-button ng-click="vm.uiAction('open-0', $event)">
+            <md-button ng-click="vm.uiAction('open-tiger', $event)">
               Open Tiger
             </md-button>
           </md-menu-item>
           <md-menu-item>
-            <md-button ng-click="vm.uiAction('open-1', $event)">
+            <md-button ng-click="vm.uiAction('open-crosswalk', $event)">
               Open Crosswalk
             </md-button>
           </md-menu-item>
@@ -139,6 +146,18 @@
             </tr>
           </table>
           <table>
+            <tr>
+              <td colspan="2">
+                Color Planes
+              </td>
+            </tr>
+            <tr>
+              <td colspan="2">
+                <md-checkbox ng-model="vm.showY" ng-change="vm.uiViewChange()">Y</md-checkbox>
+                <md-checkbox ng-model="vm.showU" ng-change="vm.uiViewChange()">U</md-checkbox>
+                <md-checkbox ng-model="vm.showV" ng-change="vm.uiViewChange()">V</md-checkbox>
+              </td>
+            </tr>
             <tr>
               <td colspan="2">
                 <md-checkbox ng-model="vm.showGrid" ng-change="vm.uiViewChange()">

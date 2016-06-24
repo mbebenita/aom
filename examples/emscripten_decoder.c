@@ -228,13 +228,9 @@ int get_mi_mode(int c, int r) {
 
 EMSCRIPTEN_KEEPALIVE
 int get_dering_gain(int c, int r) {
-#if DERING_REFINEMENT
-  const MB_MODE_INFO *mbmi =
-    &cm->mi_grid_visible[r * cm->mi_stride + c]->mbmi;
-  return mbmi->dering_gain;
-#else
-  return 0;
-#endif
+  AV1AnalyzerMI *mi =
+    &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
+  return mi->dering_gain;
 }
 
 EMSCRIPTEN_KEEPALIVE

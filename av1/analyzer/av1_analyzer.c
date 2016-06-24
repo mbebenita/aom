@@ -34,11 +34,13 @@ aom_codec_err_t av1_analyze_frame(struct AV1Decoder *pbi) {
         const MB_MODE_INFO *mbmi =
           &cm->mi_grid_visible[r * cm->mi_stride + c]->mbmi;
         AV1AnalyzerMI *mi = &mi_grid.buffer[r * mi_cols + c];
-        // Copy MVs.
+        // MVs.
         mi->mv.col = mbmi->mv[0].as_mv.col;
         mi->mv.row = mbmi->mv[0].as_mv.row;
-        // Copy Mode
+        // Prediction Mode
         mi->mode = mbmi->mode;
+        // Deringing Gain
+        mi->dering_gain = mbmi->dering_gain;
       }
     }
   }

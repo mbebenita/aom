@@ -179,6 +179,10 @@ class AppCtrl {
   ratio: number = 1;
   scale: number = 1;
 
+  showY: boolean = true;
+  showU: boolean = true;
+  showV: boolean = true;
+
   showGrid: boolean = false;
   showMotionVectors: boolean = false;
   showImage: boolean = true;
@@ -217,7 +221,24 @@ class AppCtrl {
   $interval: any;
 
   constructor($scope, $interval) {
+    var self = this;
+
     this.$scope = $scope;
+    // File input types don't have angular bindings, so we need set the
+    // event handler on the scope object.
+    $scope.fileInputNameChanged = function() {
+      var input = <any>event.target;
+      var reader = new FileReader();
+      reader.onload = function() {
+        var buffer = reader.result;
+        self.openFileBytes(new Uint8Array(buffer));
+        self.playFrameAsync(1, () => {
+          self.drawFrame();
+        });
+      };
+      reader.readAsArrayBuffer(input.files[0]);
+    };
+
     this.$interval = $interval;
     this.ratio = window.devicePixelRatio || 1;
     this.scale = this.ratio;
@@ -231,11 +252,14 @@ class AppCtrl {
     this.overlayCanvas = <HTMLCanvasElement>document.getElementById("overlay");
     this.overlayContext = this.overlayCanvas.getContext("2d");
 
+    this.overlayCanvas.addEventListener("mousemove", this.onMouseMove.bind(this));
+
     this.frameCanvas = document.createElement("canvas");
     this.frameContext = this.frameCanvas.getContext("2d");
 
     var parameters = getUrlParameters();
-    ["showGrid", "showDering", "showImage", "showMotionVectors", "showMode"].forEach(x => {
+    ["showGrid", "showDering", "showImage", "showMotionVectors",
+     "showMode", "showY", "showU", "showV"].forEach(x => {
       if (x in parameters) {
         this[x] = parameters[x] == "true";
       }
@@ -243,7 +267,7 @@ class AppCtrl {
     var frames = parseInt(parameters.frameNumber) || 1;
 
     this.aom = new AOM();
-    var file = "media/Crosswalk.ivf";
+    var file = "media/crosswalk.ivf";
     this.openFile(file, () => {
       this.playFrameAsync(frames, () => {
         this.drawFrame();
@@ -263,7 +287,12 @@ class AppCtrl {
   }
 
   installKeyboardShortcuts() {
-    Mousetrap.bind(['ctrl+right'], this.uiNextFrame.bind(this));
+    Mousetrap.bind(['ctrl+right'], () => {
+      this.playFrame();
+      this.drawFrame();
+      this.uiApply();
+    });
+
     Mousetrap.bind(['space'], this.uiPlayPause.bind(this));
 
     Mousetrap.bind([']'], () => {
@@ -283,7 +312,8 @@ class AppCtrl {
     var self = this;
     function toggle(name) {
       self[name] = !self[name];
-      self.drawFrame();
+      // self.drawFrame();
+      self.drawLayers();
       self.uiApply();
     }
 
@@ -294,13 +324,28 @@ class AppCtrl {
     Mousetrap.bind(['5'], toggle.bind(this, "showMode"));
   }
 
+  onMouseMove(event: MouseEvent) {
+    function getMousePosition(canvas: HTMLCanvasElement, event: MouseEvent) {
+      var rect = canvas.getBoundingClientRect();
+      return {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top
+      };
+    }
+    console.info(getMousePosition(this.overlayCanvas, event));
+  }
+
+  openFileBytes(buffer: Uint8Array) {
+    this.fileSize = buffer.length;
+    FS.writeFile("/tmp/input.ivf", buffer, { encoding: "binary" });
+    this.aom.open_file();
+    this.size = this.aom.getFrameSize();
+    this.resetCanvases();
+  }
+
   openFile(path: string, next: () => any = null) {
     this.downloadFile(path, (buffer: Uint8Array) => {
-      this.fileSize = buffer.length;
-      FS.writeFile("/tmp/input.ivf", buffer, { encoding: "binary" });
-      this.aom.open_file();
-      this.size = this.aom.getFrameSize();
-      this.resetCanvases();
+      this.openFileBytes(buffer);
       next();
     });
   }
@@ -348,14 +393,17 @@ class AppCtrl {
   uiAction(name) {
     var file;
     switch (name) {
-      case "open":
+      case "open-file":
+        angular.element(document.querySelector('#fileInput'))[0].click();
+        break;
+      case "open-crosswalk":
+        file = "media/crosswalk.ivf";
+        break;
+      case "open-soccer":
         file = "media/soccer_cif_dering.ivf";
         break;
-      case "open-0":
+      case "open-tiger":
         file = "media/tiger.ivf";
-        break;
-      case "open-1":
-        file = "media/Crosswalk.ivf";
         break;
     }
     this.openFile(file, () => {
@@ -418,7 +466,6 @@ class AppCtrl {
   uiNextFrame() {
     this.playFrame();
     this.drawFrame();
-    this.uiApply();
   }
 
   drawFrame() {
@@ -446,13 +493,19 @@ class AppCtrl {
     var w = this.size.w;
     var h = this.size.h;
 
+
+    var showY = this.showY;
+    var showU = this.showU;
+    var showV = this.showV;
+
+    // var s = performance.now();
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
-        var index = (y * w + x) * 4;
+        var index = (Math.imul(y, w) + x) << 2;
 
-        var Y = H[Yp + y * Ys + x];
-        var U = H[Up + (y >> 1) * Us + (x >> 1)];
-        var V = H[Vp + (y >> 1) * Vs + (x >> 1)];
+        var Y = showY ? H[Yp + Math.imul(y, Ys) + x] : 255;
+        var U = showU ? H[Up + Math.imul(y >> 1, Us) + (x >> 1)] : 128;
+        var V = showV ? H[Vp + Math.imul(y >> 1, Vs) + (x >> 1)] : 128;
 
         var bgr = YUV2RGB(Y, U, V);
 
@@ -466,6 +519,7 @@ class AppCtrl {
         I[index + 3] = 255;
       }
     }
+    // console.log(performance.now() - s);
 
     if (this.showImage && this.imageData) {
       this.frameContext.putImageData(this.imageData, 0, 0);
@@ -645,9 +699,9 @@ function YUV2RGB(yValue, uValue, vValue) {
   var rTmp = yValue + (1.370705 * (vValue - 128));
   var gTmp = yValue - (0.698001 * (vValue - 128)) - (0.337633 * (uValue - 128));
   var bTmp = yValue + (1.732446 * (uValue - 128));
-  var r = clamp(rTmp, 0, 255) | 0;
-  var g = clamp(gTmp, 0, 255) | 0;
-  var b = clamp(bTmp, 0, 255) | 0;
+  var r = clamp(rTmp | 0, 0, 255) | 0;
+  var g = clamp(gTmp | 0, 0, 255) | 0;
+  var b = clamp(bTmp | 0, 0, 255) | 0;
   return (b << 16) | (g << 8) | (r << 0);
 }
 

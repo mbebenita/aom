@@ -60,6 +60,7 @@ typedef struct AV1AnalyzerMV {
 typedef struct AV1AnalyzerMI {
   AV1AnalyzerMV mv;
   AV1AnalyzerPredictionMode mode;
+  int8_t dering_gain;
 } AV1AnalyzerMI;
 
 typedef struct AV1AnalyzerMIBuffer {

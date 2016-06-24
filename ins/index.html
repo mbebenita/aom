@@ -194,6 +194,13 @@
               </td>
             </tr>
             <tr>
+              <td colspan="2">
+                <md-checkbox ng-model="vm.showInfo" ng-change="vm.uiViewChange()">
+                  Show Info (6)
+                </md-checkbox>
+              </td>
+            </tr>
+            <tr>
               <td colspan="2" style="padding-left: 10px;">
                 <table>
                   <tr ng-repeat="key in vm.predictionModeNames">
@@ -214,8 +221,18 @@
             width=0 height=0></canvas>
         </div>
       </md-content>
+      <md-content ng-hide="!vm.showInfo" style="background-color: #F5F5F5; width: 512px;">
+        <canvas id="zoom" oncontextmenu="event.preventDefault()" style="left: 0; bottom: 0; z-index: 1000; image-rendering: pixelated;"
+              width=0 height=0></canvas>
+              <br>
+        <md-content layout-padding>
+          Prediction Mode: {{ vm.uiMIMode() }}<br>
+          Dering Gain: {{ vm.uiMIDeringGain() }}
+        </md-content>
+      </md-content>
     </div>
   </div>
+
 
 
 

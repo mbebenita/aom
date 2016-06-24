@@ -189,6 +189,7 @@ class AppCtrl {
   showDering: boolean = false;
   showMode: boolean = false;
 
+  showInfo: boolean = true;
   frameNumber: number = 0;
 
   progressValue = 0;
@@ -204,9 +205,13 @@ class AppCtrl {
   container: HTMLDivElement;
   displayCanvas: HTMLCanvasElement;
   overlayCanvas: HTMLCanvasElement;
+  zoomCanvas: HTMLCanvasElement;
 
   displayContext: CanvasRenderingContext2D = null;
   overlayContext: CanvasRenderingContext2D = null;
+  zoomContext: CanvasRenderingContext2D = null;
+  zoomSize = 512;
+  mousePosition: Vector;
   imageData: ImageData = null;
 
   frameCanvas: HTMLCanvasElement;
@@ -251,6 +256,11 @@ class AppCtrl {
 
     this.overlayCanvas = <HTMLCanvasElement>document.getElementById("overlay");
     this.overlayContext = this.overlayCanvas.getContext("2d");
+
+    this.zoomCanvas = <HTMLCanvasElement>document.getElementById("zoom");
+    this.zoomContext = this.zoomCanvas.getContext("2d");
+    this.zoomContext.mozImageSmoothingEnabled = false;
+    this.zoomContext.imageSmoothingEnabled = false;
 
     this.overlayCanvas.addEventListener("mousemove", this.onMouseMove.bind(this));
 
@@ -322,17 +332,37 @@ class AppCtrl {
     Mousetrap.bind(['3'], toggle.bind(this, "showImage"));
     Mousetrap.bind(['4'], toggle.bind(this, "showDering"));
     Mousetrap.bind(['5'], toggle.bind(this, "showMode"));
+    Mousetrap.bind(['6'], toggle.bind(this, "showInfo"));
   }
 
   onMouseMove(event: MouseEvent) {
     function getMousePosition(canvas: HTMLCanvasElement, event: MouseEvent) {
       var rect = canvas.getBoundingClientRect();
-      return {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top
-      };
+      return new Vector(
+        event.clientX - rect.left,
+        event.clientY - rect.top
+      );
     }
-    console.info(getMousePosition(this.overlayCanvas, event));
+    // console.info(getMousePosition(this.overlayCanvas, event));
+    this.mousePosition = getMousePosition(this.overlayCanvas, event);
+    this.drawZoom();
+  }
+
+  getMI(): Vector {
+    var v = this.mousePosition;
+    var x = v.x / this.scale | 0;
+    var y = v.y / this.scale | 0;
+    return new Vector(x / 8 | 0, y / 8 | 0);
+  }
+
+  uiMIMode() {
+    var mi = this.getMI();
+    return this.predictionModeNames[this.aom.get_mi_mode(mi.x, mi.y)];
+  }
+
+  uiMIDeringGain() {
+    var mi = this.getMI();
+    return this.aom.get_dering_gain(mi.x, mi.y);
   }
 
   openFileBytes(buffer: Uint8Array) {
@@ -368,6 +398,11 @@ class AppCtrl {
 		this.overlayCanvas.style.height = (this.size.h * this.scale) + "px";
     this.overlayCanvas.width = this.size.w * this.scale * this.ratio;
 		this.overlayCanvas.height = this.size.h * this.scale * this.ratio;
+
+    this.zoomCanvas.style.width = this.zoomSize + "px";
+		this.zoomCanvas.style.height = this.zoomSize + "px";
+    this.zoomCanvas.width = this.zoomSize * this.ratio;
+		this.zoomCanvas.height = this.zoomSize * this.ratio;
   }
 
   downloadFile(path: string, next: (buffer: Uint8Array) => void) {
@@ -468,9 +503,33 @@ class AppCtrl {
     this.drawFrame();
   }
 
+  drawZoom() {
+    var v = this.mousePosition;
+
+    var rect = this.displayCanvas.getBoundingClientRect();
+
+    var size = 32;
+    var halfSize = size / 2;
+    // this.zoomCanvas.style.left = (rect.left + v.x - halfSize) + "px";
+    // this.zoomCanvas.style.top = (rect.top + v.y + 10) + "px";
+
+    this.zoomContext.mozImageSmoothingEnabled = false;
+    this.zoomContext.imageSmoothingEnabled = false;
+
+    var x = v.x / this.scale | 0;
+    var y = v.y / this.scale | 0;
+    this.zoomContext.clearRect(0, 0, this.zoomSize * this.ratio, this.zoomSize * this.ratio);
+    this.zoomContext.drawImage(this.frameCanvas,
+      x - halfSize, y - halfSize, size, size,
+      0, 0, this.zoomSize * this.ratio, this.zoomSize * this.ratio);
+
+    this.uiApply();
+  }
+
   drawFrame() {
     this.clearImage();
     this.drawImage();
+    this.drawZoom();
     this.drawLayers();
   }
 
@@ -525,7 +584,12 @@ class AppCtrl {
       this.frameContext.putImageData(this.imageData, 0, 0);
       this.displayContext.mozImageSmoothingEnabled = false;
       this.displayContext.imageSmoothingEnabled = false;
-      this.displayContext.drawImage(this.frameCanvas, 0, 0, this.size.w * this.scale * this.ratio, this.size.h * this.scale * this.ratio);
+
+      var dw = this.size.w * this.scale * this.ratio;
+      var dh = this.size.h * this.scale * this.ratio;
+      this.displayContext.drawImage(this.frameCanvas, 0, 0, dw, dh);
+
+
     }
 
     this.drawLayers();

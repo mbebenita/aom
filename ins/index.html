@@ -35,8 +35,17 @@
         <md-menu-content>
           <md-menu-item>
             <md-button ng-click="vm.uiAction('open', $event)">
-              Open...
-              <!--<span class="md-alt-text"> {{ 'M-O' | keyboardShortcut }}</span>-->
+              Open Soccer
+            </md-button>
+          </md-menu-item>
+          <md-menu-item>
+            <md-button ng-click="vm.uiAction('open-0', $event)">
+              Open Tiger
+            </md-button>
+          </md-menu-item>
+          <md-menu-item>
+            <md-button ng-click="vm.uiAction('open-1', $event)">
+              Open Crosswalk
             </md-button>
           </md-menu-item>
         </md-menu-content>
@@ -57,6 +66,9 @@
           </md-menu-item>
           <md-menu-item type="checkbox" ng-model="vm.showDering" ng-change="vm.uiViewChange()">
             Show dering
+          </md-menu-item>
+          <md-menu-item type="checkbox" ng-model="vm.showMode" ng-change="vm.uiViewChange()">
+            Show mode
           </md-menu-item>
           <md-menu-item class="md-indent">
             <md-menu>
@@ -95,7 +107,7 @@
     <div flex layout="row">
       <md-sidenav class="md-sidenav-left md-whiteframe-z2" md-component-id="left" md-is-locked-open="true">
         <md-content layout-padding>
-          <table>
+          <table width="100%">
             <tr>
               <td>Frame</td><td>{{ vm.frameNumber }}</td>
             </tr>
@@ -113,6 +125,64 @@
             </tr>
             <tr>
               <td>Last Decode Time</td><td>{{ vm.lastDecodeFrameTime.toFixed(2) }}</td>
+            </tr>
+          </table>
+          <table width="100%">
+            <tr>
+              <td>[ ]</td><td>Zoom In / Out</td>
+            </tr>
+            <tr>
+              <td>Ctrl + Right</td><td>Next Frame</td>
+            </tr>
+            <tr>
+              <td>Space</td><td>Play / Stop</td>
+            </tr>
+          </table>
+          <table>
+            <tr>
+              <td colspan="2">
+                <md-checkbox ng-model="vm.showGrid" ng-change="vm.uiViewChange()">
+                  Show Grid (1)
+                </md-checkbox>
+              </td>
+            </tr>
+            <tr>
+              <td colspan="2">
+                <md-checkbox ng-model="vm.showMotionVectors" ng-change="vm.uiViewChange()">
+                  Show Motion Vectors (2)
+                </md-checkbox>
+              </td>
+            </tr>
+            <tr>
+              <td colspan="2">
+                <md-checkbox ng-model="vm.showImage" ng-change="vm.uiViewChange()">
+                  Show Image (3)
+                </md-checkbox>
+              </td>
+            </tr>
+            <tr>
+              <td colspan="2">
+                <md-checkbox ng-model="vm.showDering" ng-change="vm.uiViewChange()">
+                  Show Dering (4)
+                </md-checkbox>
+              </td>
+            </tr>
+            <tr>
+              <td colspan="2">
+                <md-checkbox ng-model="vm.showMode" ng-change="vm.uiViewChange()">
+                  Show Prediction Modes (5)
+                </md-checkbox>
+              </td>
+            </tr>
+            <tr>
+              <td colspan="2" style="padding-left: 10px;">
+                <table>
+                  <tr ng-repeat="key in vm.predictionModeNames">
+                    <td style="width: 200px;">{{ key }}</td>
+                    <td style="height: 16px; width: 16px; background-color: {{ vm.predictionModeColors[$index] }};"></td>
+                  </tr>
+                </table>
+              </td>
             </tr>
           </table>
         </md-content>

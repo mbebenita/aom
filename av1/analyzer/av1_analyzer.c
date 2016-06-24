@@ -23,28 +23,25 @@ aom_codec_err_t av1_analyze_frame(struct AV1Decoder *pbi) {
   pbi->analyzer_data->mi_rows = mi_rows;
   pbi->analyzer_data->mi_cols = mi_cols;
 
-  // Save motion vectors.
-  AV1AnalyzerMVBuffer mv_grid = pbi->analyzer_data->mv_grid;
-  if (mv_grid.size > 0) {
-    if (mi_rows * mi_cols > mv_grid.size) {
+  // Save mode info.
+  AV1AnalyzerMIBuffer mi_grid = pbi->analyzer_data->mi_grid;
+  if (mi_grid.size > 0) {
+    if (mi_rows * mi_cols > mi_grid.size) {
       return AOM_CODEC_ERROR;
     }
     for (r = 0; r < mi_rows; ++r) {
       for (c = 0; c < mi_cols; ++c) {
         const MB_MODE_INFO *mbmi =
           &cm->mi_grid_visible[r * cm->mi_stride + c]->mbmi;
-        AV1AnalyzerMV *mv = &mv_grid.buffer[r * mi_cols + c];
-        mv->col = mbmi->mv[0].as_mv.col;
-        mv->row = mbmi->mv[0].as_mv.row;
+        AV1AnalyzerMI *mi = &mi_grid.buffer[r * mi_cols + c];
+        // Copy MVs.
+        mi->mv.col = mbmi->mv[0].as_mv.col;
+        mi->mv.row = mbmi->mv[0].as_mv.row;
+        // Copy Mode
+        mi->mode = mbmi->mode;
       }
     }
   }
-  // Save image planes.
-  for (int i = 0; i < 4; i++) {
-//    if (pbi->analyzer_data.planes[i] != NULL) {
-//      continue;
-//    }
-
-  }
+  // Sa
   return AOM_CODEC_OK;
 }

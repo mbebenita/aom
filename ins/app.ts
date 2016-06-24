@@ -2,6 +2,46 @@ declare var angular: any;
 declare var FS: any;
 declare var Mousetrap: any;
 
+var colors = [
+  "#E85EBE", "#009BFF", "#00FF00", "#0000FF", "#FF0000", "#01FFFE", "#FFA6FE",
+  "#FFDB66", "#006401", "#010067", "#95003A", "#007DB5", "#FF00F6", "#FFEEE8",
+  "#774D00", "#90FB92", "#0076FF", "#D5FF00", "#FF937E", "#6A826C", "#FF029D",
+  "#FE8900", "#7A4782", "#7E2DD2", "#85A900", "#FF0056", "#A42400", "#00AE7E",
+  "#683D3B", "#BDC6FF", "#263400", "#BDD393", "#00B917", "#9E008E", "#001544",
+  "#C28C9F", "#FF74A3", "#01D0FF", "#004754", "#E56FFE", "#788231", "#0E4CA1",
+  "#91D0CB", "#BE9970", "#968AE8", "#BB8800", "#43002C", "#DEFF74", "#00FFC6",
+  "#FFE502", "#620E00", "#008F9C", "#98FF52", "#7544B1", "#B500FF", "#00FF78",
+  "#FF6E41", "#005F39", "#6B6882", "#5FAD4E", "#A75740", "#A5FFD2", "#FFB167"
+];
+
+function hexToRGB(hex: string, alpha: number = 0) {
+  var r = parseInt(hex.slice(1,3), 16),
+      g = parseInt(hex.slice(3,5), 16),
+      b = parseInt(hex.slice(5,7), 16),
+      a = "";
+  if (alpha) {
+    a = ", 1";
+  }
+  return "rgb(" + r + ", " + g + ", " + b + a + ")";
+}
+
+enum AOMAnalyzerPredictionMode {
+  DC_PRED 		= 0,   // Average of above and left pixels
+  V_PRED 			= 1,   // Vertical
+  H_PRED 			= 2,   // Horizontal
+  D45_PRED 		= 3,   // Directional 45  deg = round(arctan(1/1) * 180/pi)
+  D135_PRED 	= 4,   // Directional 135 deg = 180 - 45
+  D117_PRED 	= 5,   // Directional 117 deg = 180 - 63
+  D153_PRED 	= 6,   // Directional 153 deg = 180 - 27
+  D207_PRED 	= 7,   // Directional 207 deg = 180 + 27
+  D63_PRED 		= 8,   // Directional 63  deg = round(arctan(2/1) * 180/pi)
+  TM_PRED 		= 9,   // True-motion
+  NEARESTMV 	= 10,
+  NEARMV 			= 11,
+  ZEROMV 			= 12,
+  NEWMV 			= 13
+}
+
 interface AOMInternal {
   _read_frame (): number;
   _get_plane (pli: number): number;
@@ -11,6 +51,7 @@ interface AOMInternal {
   _get_mi_rows(): number;
   _get_mi_cols(): number;
   _get_mi_mv(c: number, r: number): number;
+  _get_mi_mode(c: number, r: number): AOMAnalyzerPredictionMode;
   _get_dering_gain(c: number, r: number): number;
   _get_frame_count(): number;
   _get_frame_width(): number;
@@ -51,6 +92,9 @@ class AOM {
   }
   get_mi_mv(c: number, r: number): number {
     return this.native._get_mi_mv(c, r);
+  }
+  get_mi_mode(c: number, r: number): AOMAnalyzerPredictionMode {
+    return this.native._get_mi_mode(c, r);
   }
   get_dering_gain(c: number, r: number): number {
     return this.native._get_dering_gain(c, r);
@@ -136,9 +180,10 @@ class AppCtrl {
   scale: number = 1;
 
   showGrid: boolean = false;
-  showDering: boolean = false;
-  showImage: boolean = true;
   showMotionVectors: boolean = false;
+  showImage: boolean = true;
+  showDering: boolean = false;
+  showMode: boolean = false;
 
   frameNumber: number = 0;
 
@@ -164,6 +209,10 @@ class AppCtrl {
   frameContext: CanvasRenderingContext2D = null;
 
   lastDecodeFrameTime: number = 0;
+
+  predictionModeNames: string [] = [];
+  predictionModeColors: string [] = colors;
+
   $scope: any;
   $interval: any;
 
@@ -172,7 +221,7 @@ class AppCtrl {
     this.$interval = $interval;
     this.ratio = window.devicePixelRatio || 1;
     this.scale = this.ratio;
-    // this.scale *= 2;
+    this.scale = 1;
 
     this.container = <HTMLDivElement>document.getElementById("container");
 
@@ -186,7 +235,7 @@ class AppCtrl {
     this.frameContext = this.frameCanvas.getContext("2d");
 
     var parameters = getUrlParameters();
-    ["showGrid", "showDering", "showImage", "showMotionVectors"].forEach(x => {
+    ["showGrid", "showDering", "showImage", "showMotionVectors", "showMode"].forEach(x => {
       if (x in parameters) {
         this[x] = parameters[x] == "true";
       }
@@ -194,13 +243,23 @@ class AppCtrl {
     var frames = parseInt(parameters.frameNumber) || 1;
 
     this.aom = new AOM();
-    this.openFile("media/soccer_cif_dering.ivf", () => {
+    var file = "media/Crosswalk.ivf";
+    this.openFile(file, () => {
       this.playFrameAsync(frames, () => {
         this.drawFrame();
       })
     });
 
     this.installKeyboardShortcuts();
+    this.initPredictionModeColors();
+  }
+
+  initPredictionModeColors() {
+    for (var k in AOMAnalyzerPredictionMode) {
+      if (isNaN(parseInt(k))) {
+        this.predictionModeNames.push(k);
+      }
+    }
   }
 
   installKeyboardShortcuts() {
@@ -225,12 +284,14 @@ class AppCtrl {
     function toggle(name) {
       self[name] = !self[name];
       self.drawFrame();
+      self.uiApply();
     }
 
     Mousetrap.bind(['1'], toggle.bind(this, "showGrid"));
     Mousetrap.bind(['2'], toggle.bind(this, "showMotionVectors"));
     Mousetrap.bind(['3'], toggle.bind(this, "showImage"));
     Mousetrap.bind(['4'], toggle.bind(this, "showDering"));
+    Mousetrap.bind(['5'], toggle.bind(this, "showMode"));
   }
 
   openFile(path: string, next: () => any = null) {
@@ -285,15 +346,23 @@ class AppCtrl {
   }
 
   uiAction(name) {
+    var file;
     switch (name) {
       case "open":
-        this.openFile("media/tiger.ivf", () => {
-          this.playFrameAsync(1, () => {
-            this.drawFrame();
-          })
-        });
-      break;
+        file = "media/soccer_cif_dering.ivf";
+        break;
+      case "open-0":
+        file = "media/tiger.ivf";
+        break;
+      case "open-1":
+        file = "media/Crosswalk.ivf";
+        break;
     }
+    this.openFile(file, () => {
+      this.playFrameAsync(1, () => {
+        this.drawFrame();
+      })
+    });
   }
 
   uiViewChange() {
@@ -417,6 +486,26 @@ class AppCtrl {
     this.showGrid && this.drawGrid();
     this.showMotionVectors && this.drawMotionVectors();
     this.showDering && this.drawDering();
+    this.showMode && this.drawMode();
+  }
+
+  drawMode() {
+    var ctx = this.overlayContext;
+    var cols = this.aom.get_mi_cols();
+    var rows = this.aom.get_mi_rows();
+    ctx.strokeStyle = "rgba(33,33,33,0.75)";
+
+    var s = this.scale * this.ratio;
+    ctx.globalAlpha = 0.5;
+
+    for (var c = 0; c < cols; c++) {
+      for (var r = 0; r < rows; r++) {
+        var i = this.aom.get_mi_mode(c, r);
+        // ctx.fillStyle = "rgba(33,33,33," + (i / 13) + ")";
+        ctx.fillStyle = colors[i];
+        ctx.fillRect(c * 8 * s, r * 8 * s, 8 * s, 8 * s);
+      }
+    }
   }
 
   drawDering() {

@@ -119,9 +119,14 @@ int read_frame();
 AV1AnalyzerData analyzer_data;
 
 void init_analyzer() {
-  const int mi_count = info->frame_width * info->frame_height / 64;
-  analyzer_data.mv_grid.buffer = aom_malloc(sizeof(AV1AnalyzerMV) * mi_count);
-  analyzer_data.mv_grid.size = mi_count;
+  const int aligned_width = ALIGN_POWER_OF_TWO(info->frame_width, MI_SIZE_LOG2);
+  const int aligned_height = ALIGN_POWER_OF_TWO(info->frame_height, MI_SIZE_LOG2);
+  int mi_cols = aligned_width >> MI_SIZE_LOG2;
+  int mi_rows = aligned_height >> MI_SIZE_LOG2;
+  int mi_count = mi_cols * mi_rows;
+  printf("init_analyzer: %d:%d (mi)\n", mi_cols, mi_rows);
+  analyzer_data.mi_grid.buffer = aom_malloc(sizeof(AV1AnalyzerMI) * mi_count);
+  analyzer_data.mi_grid.size = mi_count;
 }
 
 void dump_analyzer() {
@@ -131,9 +136,10 @@ void dump_analyzer() {
   int r, c;
   for (r = 0; r < mi_rows; ++r) {
     for (c = 0; c < mi_cols; ++c) {
-       AV1AnalyzerMV mv = analyzer_data.mv_grid.buffer[r * mi_cols + c];
+      AV1AnalyzerMI mi = analyzer_data.mi_grid.buffer[r * mi_cols + c];
+      printf("%d ", mi.mode);
       // printf("%3d:%-3d ", abs(mv.row), abs(mv.col));
-       printf("%d:%d ", mv.row, mv.col);
+       // printf("%d:%d ", mv.row, mv.col);
       // ...
     }
     printf("\n");
@@ -208,9 +214,16 @@ int get_mi_cols() {
 
 EMSCRIPTEN_KEEPALIVE
 int get_mi_mv(int c, int r) {
-  AV1AnalyzerMV *mv =
-    &analyzer_data.mv_grid.buffer[r * analyzer_data.mi_cols + c];
-  return mv->row << 16 | mv->col;
+  AV1AnalyzerMI *mi =
+    &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
+  return mi->mv.row << 16 | mi->mv.col;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int get_mi_mode(int c, int r) {
+  AV1AnalyzerMI *mi =
+    &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
+  return mi->mode;
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -262,6 +275,7 @@ int main(int argc, char **argv) {
     open_file(argv[1]);
     while (!read_frame()) {
       printf("%d\n", frame_count);
+      dump_analyzer();
     }
   }
 }

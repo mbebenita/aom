@@ -246,8 +246,8 @@ class AppCtrl {
     },
     showGrid: {
       key: "2",
-      description: "Show Grid",
-      detail: "Shows 8x8 mode info grid."
+      description: "Show SB Grid",
+      detail: "Shows 64x64 mode info grid."
     },
     showSplit: {
       key: "3",
@@ -879,12 +879,12 @@ class AppCtrl {
 
     var lineWidth = 1;
     var lineOffset = lineWidth / 2;
-    for (var c = 0; c < cols + 1; c++) {
+    for (var c = 0; c < cols + 1; c += 8) {
       var offset = lineOffset + c * s;
       ctx.moveTo(offset, 0);
       ctx.lineTo(offset, this.size.h * scale * ratio);
     }
-    for (var r = 0; r < rows + 1; r++) {
+    for (var r = 0; r < rows + 1; r += 8) {
       var offset = lineOffset + r * s;
       ctx.moveTo(0, offset);
       ctx.lineTo(this.size.w * scale * ratio, offset);

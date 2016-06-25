@@ -1,7 +1,8 @@
 declare var angular: any;
 declare var FS: any;
 declare var Mousetrap: any;
-declare var jsgradient: any;
+declare var tinycolor: any;
+declare var tinygradient: any;
 
 var colors = [
   "#E85EBE", "#009BFF", "#00FF00", "#0000FF", "#FF0000", "#01FFFE", "#FFA6FE",
@@ -14,8 +15,6 @@ var colors = [
   "#FFE502", "#620E00", "#008F9C", "#98FF52", "#7544B1", "#B500FF", "#00FF78",
   "#FF6E41", "#005F39", "#6B6882", "#5FAD4E", "#A75740", "#A5FFD2", "#FFB167"
 ];
-
-var blueColors = jsgradient.generateGradient('#C5CAE9', '#1A237E', 32);
 
 function hexToRGB(hex: string, alpha: number = 0) {
   var r = parseInt(hex.slice(1,3), 16),
@@ -209,11 +208,11 @@ class AppCtrl {
   showY: boolean = true;
   showU: boolean = true;
   showV: boolean = true;
+  showImage: boolean = true;
 
   showGrid: boolean = false;
   showSplit: boolean = false;
   showMotionVectors: boolean = false;
-  showImage: boolean = true;
   showDering: boolean = false;
   showMode: boolean = false;
   showInfo: boolean = false;
@@ -224,72 +223,72 @@ class AppCtrl {
       key: "y",
       description: "Show Y",
       detail: "Shows Y image plane.",
-      updatesImage: true
+      updatesImage: true,
+      default: true
     },
     showU: {
       key: "u",
       description: "Show U",
       detail: "Shows U image plane.",
-      updatesImage: true
+      updatesImage: true,
+      default: true
     },
     showV: {
       key: "v",
       description: "Show V",
       detail: "Shows V image plane.",
-      updatesImage: true
+      updatesImage: true,
+      default: true
     },
     showImage: {
       key: "1",
       description: "Show Image",
       detail: "Shows image planes.",
-      updatesImage: true
+      updatesImage: true,
+      default: true
     },
     showGrid: {
       key: "2",
       description: "Show SB Grid",
-      detail: "Shows 64x64 mode info grid."
+      detail: "Shows 64x64 mode info grid.",
+      default: false
     },
     showSplit: {
       key: "3",
       description: "Show Split Grid",
-      detail: "Shows block partitions."
+      detail: "Shows block partitions.",
+      default: false
     },
     showDering: {
       key: "4",
       description: "Show Dering",
-      detail: "Shows blocks where the deringing filter is applied."
+      detail: "Shows blocks where the deringing filter is applied.",
+      default: false
     },
     showMotionVectors: {
       key: "5",
       description: "Show Motion Vectors",
-      detail: "Shows motion vectors, darker colors represent longer vectors."
+      detail: "Shows motion vectors, darker colors represent longer vectors.",
+      default: false
     },
     showMode: {
       key: "6",
       description: "Show Mode",
-      detail: "Shows prediction modes."
+      detail: "Shows prediction modes.",
+      default: false
     },
     showInfo: {
       key: "7",
       description: "Show Info",
-      detail: "Shows mode info details."
+      detail: "Shows mode info details.",
+      default: false
     },
     showSkip: {
       key: "8",
       description: "Show Skip",
-      detail: "Shows skip flags."
+      detail: "Shows skip flags.",
+      default: false
     }
-  };
-
-  uiOptions = {
-    showGrid: this.options.showGrid,
-    showDering: this.options.showDering,
-    showImage: this.options.showImage,
-    showMotionVectors: this.options.showMotionVectors,
-    showMode: this.options.showMode,
-    showInfo: this.options.showInfo,
-    showSkip: this.options.showSkip,
-    showSplit: this.options.showSplit
   };
 
   frameNumber: number = 0;
@@ -324,6 +323,12 @@ class AppCtrl {
   predictionModeNames: string [] = [];
   predictionModeColors: string [] = colors;
   blockSizeNames: string [] = [];
+
+  mvColor = "hsl(232, 36%, 41%)";
+  skipColor = "hsla(326, 53%, 42%, 0.19)";
+  gridColor = "rgba(33,33,33,0.75)";
+  splitGridColor = "rgba(33,33,33,0.50)";
+  sharingLink = "";
 
   $scope: any;
   $interval: any;
@@ -371,10 +376,11 @@ class AppCtrl {
     this.frameContext = this.frameCanvas.getContext("2d");
 
     var parameters = getUrlParameters();
-    for (var option in this.options) {
-      if (option in parameters) {
+    for (var name in this.options) {
+      this[name] = this.options[name].default;
+      if (name in parameters) {
         // TODO: Check for boolean here..
-        this[option] = parameters[option] == "true";
+        this[name] = parameters[name] == "true";
       }
     }
     var frames = parseInt(parameters.frameNumber) || 1;
@@ -417,16 +423,12 @@ class AppCtrl {
     });
 
     Mousetrap.bind([']'], () => {
-      this.scale *= 2;
-      this.resetCanvases();
-      this.drawFrame();
+      this.uiZoom(2);
       this.uiApply();
     });
 
     Mousetrap.bind(['['], () => {
-      this.scale /= 2;
-      this.resetCanvases();
-      this.drawFrame();
+      this.uiZoom(1 / 2);
       this.uiApply();
     });
 
@@ -569,7 +571,28 @@ class AppCtrl {
     });
   }
 
-  uiViewChange() {
+  updateSharingLink() {
+    var url = location.protocol + '//' + location.host + location.pathname;
+    var args = {
+      frameNumber: this.frameNumber
+    };
+    for (var name in this.options) {
+      // Ignore default values.
+      if (this[name] == this.options[name].default) {
+        continue;
+      }
+      args[name] = this[name];
+    }
+    var argList = [];
+    for (var arg in args) {
+      argList.push(arg + "=" + encodeURIComponent(args[arg]));
+    }
+    var argListString = argList.join("&");
+    this.sharingLink = url + "?" + argListString;
+  }
+
+  uiChange() {
+    this.updateSharingLink();
     this.resetCanvases();
     this.drawFrame();
   }
@@ -607,7 +630,14 @@ class AppCtrl {
     }
   }
 
+  uiZoom(value: number) {
+    this.scale *= value;
+    this.resetCanvases();
+    this.drawFrame();
+  }
+
   uiApply() {
+    this.updateSharingLink();
     this.$scope.$apply();
   }
 
@@ -750,16 +780,14 @@ class AppCtrl {
     var ctx = this.overlayContext;
     var cols = this.aom.get_mi_cols();
     var rows = this.aom.get_mi_rows();
-    ctx.strokeStyle = "rgba(33,33,33,0.75)";
-
     var s = this.scale * this.ratio;
-    ctx.globalAlpha = 0.5;
-
+    ctx.fillStyle = this.skipColor;
     for (var c = 0; c < cols; c++) {
       for (var r = 0; r < rows; r++) {
         var i = this.aom.get_mi_skip(c, r);
-        ctx.fillStyle = colors[i];
-        ctx.fillRect(c * 8 * s, r * 8 * s, 8 * s, 8 * s);
+        if (i) {
+          ctx.fillRect(c * 8 * s, r * 8 * s, 8 * s, 8 * s);
+        }
       }
     }
   }
@@ -768,7 +796,7 @@ class AppCtrl {
     var ctx = this.overlayContext;
     var cols = this.aom.get_mi_cols();
     var rows = this.aom.get_mi_rows();
-    ctx.strokeStyle = "rgba(33,33,33,.50)";
+    ctx.strokeStyle = this.splitGridColor;
     var s = this.scale * this.ratio;
     ctx.globalAlpha = 1;
 
@@ -790,6 +818,8 @@ class AppCtrl {
 
     var lineWidth = 1;
     var lineOffset = lineWidth / 2;
+    ctx.lineWidth = lineWidth;
+
     function split(x, y, dx, dy) {
       ctx.beginPath();
       ctx.save();
@@ -869,7 +899,7 @@ class AppCtrl {
 
   drawGrid() {
     var ctx = this.overlayContext;
-    ctx.strokeStyle = "rgba(33,33,33,0.75)";
+    ctx.strokeStyle = this.gridColor;
     var cols = this.aom.get_mi_cols();
     var rows = this.aom.get_mi_rows();
     ctx.beginPath();
@@ -877,8 +907,8 @@ class AppCtrl {
     var scale = this.scale;
     var s = 8 * scale * ratio;
 
-    var lineWidth = 1;
-    var lineOffset = lineWidth / 2;
+    var lineWidth = 3;
+    var lineOffset = 1 / 2;
     for (var c = 0; c < cols + 1; c += 8) {
       var offset = lineOffset + c * s;
       ctx.moveTo(offset, 0);
@@ -977,6 +1007,15 @@ class AppCtrl {
     var rows = this.aom.get_mi_rows();
     var s = this.scale * this.ratio;
     ctx.globalAlpha = 0.5;
+
+
+    var gradient = tinygradient([
+      {color: tinycolor(this.mvColor).brighten(50), pos: 0},
+      {color: tinycolor(this.mvColor), pos: 1}
+    ]);
+
+    var colorRange = gradient.rgb(32);
+
     for (var c = 0; c < cols; c++) {
       for (var r = 0; r < rows; r++) {
         var i = this.aom.get_mi_mv(c, r);
@@ -988,7 +1027,7 @@ class AppCtrl {
         var v = new Vector(x, y);
         v.clampLength(0, 31);
         var l = v.length() | 0;
-        ctx.fillStyle = blueColors[l | 0];
+        ctx.fillStyle = colorRange[l | 0];
         ctx.fillRect(c * 8 * s, r * 8 * s, 8 * s, 8 * s);
 
         // var offset = s * 8 / 2;
@@ -1039,7 +1078,7 @@ function getUrlParameters(): any {
 };
 
 angular
-.module('AomInspectorApp', ['ngMaterial'])
+.module('AomInspectorApp', ['ngMaterial', 'color.picker'])
 .config(['$mdIconProvider', function($mdIconProvider) {
     $mdIconProvider
       // .iconSet('social', 'img/icons/sets/social-icons.svg', 24)
@@ -1063,6 +1102,19 @@ angular
   };
 })
 .controller('AppCtrl', ['$scope', '$interval', AppCtrl])
+.directive('selectOnClick', ['$window', function ($window) {
+  return {
+    restrict: 'A',
+    link: function (scope, element, attrs) {
+      element.on('click', function () {
+        if (!$window.getSelection().toString()) {
+          // Required for mobile Safari
+          this.setSelectionRange(0, this.value.length)
+        }
+      });
+    }
+  };
+}]);
 ;
 
 window.Module = {
@@ -1074,7 +1126,3 @@ window.Module = {
   memoryInitializerPrefixURL: "bin/",
   arguments: ['input.ivf', 'output.raw']
 };
-
-// var script = document.createElement('script');
-// script.src = "decoder.js";
-// document.body.appendChild(script);

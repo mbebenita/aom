@@ -2,10 +2,13 @@
 
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--<meta name="viewport" content="width=device-width, initial-scale=1">-->
+  <meta name="viewport" content="user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimal-ui">
+
   <!-- Angular Material style sheet -->
   <link rel="stylesheet" href="lib/angular-material.min.css">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link rel="stylesheet" href="lib/angularjs-color-picker.min.css">
 
   <style type="text/css">
     html {
@@ -14,10 +17,6 @@
     }
 
     body {
-      font-size: 1.6em;
-    }
-
-    table {
       font-size: 14px;
     }
 
@@ -38,7 +37,27 @@
       font-weight: bold;
     }
 
-    #fileInput { display: none; }
+    .title {
+      font-size: 14px;
+      margin-top: 0px;
+      margin-bottom: 0px;
+    }
+
+    #fileInput {
+      display: none;
+    }
+    .md-errors-spacer {
+      display: none;
+    }
+    .label {
+      font-size: 14px;
+      padding-bottom: 4px;
+      color: lightslategrey;
+    }
+    .color-picker-swatch {
+      width: 200px !important;
+      border: 0 !important;
+    }
   </style>
 </head>
 
@@ -47,108 +66,117 @@
   <div flex layout="column">
     <!--Progress Bar-->
     <md-progress-linear md-mode="{{vm.progressMode}}" value="{{vm.progressValue}}"></md-progress-linear>
-    <!--Menu-->
-    <md-menu-bar>
-      <span class="md-title" style="padding-right: 100px">AOM Analyzer</span>
-      <md-menu>
-        <button ng-click="$mdOpenMenu()">
-            File
-          </button>
-        <md-menu-content>
-          <md-menu-item>
-            <md-button ng-click="vm.uiAction('open-file', $event)">
-              Open ...
-            </md-button>
-          </md-menu-item>
-          <md-menu-item>
-            <md-button ng-click="vm.uiAction('open-soccer', $event)">
-              Open Soccer
-            </md-button>
-          </md-menu-item>
-          <md-menu-item>
-            <md-button ng-click="vm.uiAction('open-tiger', $event)">
-              Open Tiger
-            </md-button>
-          </md-menu-item>
-          <md-menu-item>
-            <md-button ng-click="vm.uiAction('open-crosswalk', $event)">
-              Open Crosswalk
-            </md-button>
-          </md-menu-item>
-        </md-menu-content>
-      </md-menu>
-      <md-menu>
-        <button ng-click="$mdOpenMenu()">
-            View
-          </button>
-        <md-menu-content>
-          <md-menu-item ng-repeat="(name, option) in vm.options" type="checkbox" ng-model="vm[name]" ng-change="vm.uiViewChange()">
-            {{option.description}}
-          </md-menu-item>
-          <md-menu-item class="md-indent">
-            <md-menu>
-              <md-button ng-click="$mdOpenMenu()">Zoom</md-button>
-              <md-menu-content width="3">
-                <md-menu-item type="radio" ng-model="vm.scale" value="1" ng-change="vm.uiViewChange()">1x</md-menu-item>
-                <md-menu-item type="radio" ng-model="vm.scale" value="2" ng-change="vm.uiViewChange()">2x</md-menu-item>
-                <md-menu-item type="radio" ng-model="vm.scale" value="4" ng-change="vm.uiViewChange()">4x</md-menu-item>
-                <md-menu-item type="radio" ng-model="vm.scale" value="8" ng-change="vm.uiViewChange()">8x</md-menu-item>
-              </md-menu-content>
-            </md-menu>
-          </md-menu-item>
-        </md-menu-content>
-      </md-menu>
-    </md-menu-bar>
-
     <div flex layout="row">
       <md-sidenav class="md-sidenav-left md-whiteframe-z2" md-component-id="left" md-is-locked-open="true" style="width: 256px">
-        <!--Toolbar-->
-        <md-toolbar class="md-toolbar-tools" style="background-color:">
+        <!--Menu-->
+        <md-menu-bar>
+          <md-menu>
+            <button ng-click="$mdOpenMenu()">
+            File
+            </button>
+            <md-menu-content>
+              <md-menu-item>
+                <md-button ng-click="vm.uiAction('open-file', $event)">
+                  Open ...
+                </md-button>
+              </md-menu-item>
+              <md-menu-item>
+                <md-button ng-click="vm.uiAction('open-soccer', $event)">
+                  Open Soccer
+                </md-button>
+              </md-menu-item>
+              <md-menu-item>
+                <md-button ng-click="vm.uiAction('open-tiger', $event)">
+                  Open Tiger
+                </md-button>
+              </md-menu-item>
+              <md-menu-item>
+                <md-button ng-click="vm.uiAction('open-crosswalk', $event)">
+                  Open Crosswalk
+                </md-button>
+              </md-menu-item>
+            </md-menu-content>
+          </md-menu>
+          <md-menu>
+            <button ng-click="$mdOpenMenu()">
+            View
+          </button>
+            <md-menu-content>
+              <md-menu-item ng-repeat="(name, option) in vm.options" type="checkbox" ng-model="vm[name]" ng-change="vm.uiChange()">
+                {{option.description}}
+              </md-menu-item>
+              <md-menu-item class="md-indent">
+                <md-menu>
+                  <md-button ng-click="$mdOpenMenu()">Zoom</md-button>
+                  <md-menu-content width="3">
+                    <md-menu-item type="radio" ng-model="vm.scale" value="1" ng-change="vm.uiChange()">1x</md-menu-item>
+                    <md-menu-item type="radio" ng-model="vm.scale" value="2" ng-change="vm.uiChange()">2x</md-menu-item>
+                    <md-menu-item type="radio" ng-model="vm.scale" value="4" ng-change="vm.uiChange()">4x</md-menu-item>
+                    <md-menu-item type="radio" ng-model="vm.scale" value="8" ng-change="vm.uiChange()">8x</md-menu-item>
+                  </md-menu-content>
+                </md-menu>
+              </md-menu-item>
+            </md-menu-content>
+          </md-menu>
+        </md-menu-bar>
+
+        <md-content layout-padding>
+          <md-button ng-click="vm.uiZoom(.5)" class="md-icon-button">
+            <i class="material-icons">zoom_out</i>
+            <md-tooltip md-direction="bottom">
+              Shortcut: [
+            </md-tooltip>
+          </md-button>
+          <md-button ng-click="vm.uiZoom(2)" class="md-icon-button">
+            <i class="material-icons">zoom_in</i>
+            <md-tooltip md-direction="bottom">
+              Shortcut: ]
+            </md-tooltip>
+          </md-button>
           <md-button ng-click="vm.uiPlayPause()" class="md-icon-button">
             <i class="material-icons">{{vm.isPlaying ? "pause" : "play_arrow"}}</i>
+            <md-tooltip md-direction="bottom">
+              Shortcut: Space
+            </md-tooltip>
           </md-button>
-
           <md-button ng-click="vm.uiNextFrame()" class="md-icon-button">
             <i class="material-icons">skip_next</i>
+            <md-tooltip md-direction="bottom">
+              Shortcut: .
+            </md-tooltip>
           </md-button>
 
-          <span flex></span>
-        </md-toolbar>
-        <md-content layout-padding>
-          <table width="100%">
+          <h1 class="title">Info</h1>
+          <table width="100%" style="padding-top: 0;">
             <tr>
-              <td>Frame</td><td>{{ vm.frameNumber }}</td>
+              <td>Frame</td>
+              <td>{{ vm.frameNumber }}</td>
             </tr>
             <tr>
-              <td>Scale</td><td>{{ vm.scale }}</td>
+              <td>Scale</td>
+              <td>{{ vm.scale }}</td>
             </tr>
             <tr>
-              <td>Ratio</td><td>{{ vm.ratio }}</td>
+              <td>Ratio</td>
+              <td>{{ vm.ratio }}</td>
             </tr>
             <tr>
-              <td>Size</td><td>{{ vm.size.w }} x {{ vm.size.h }}</td>
+              <td>Size</td>
+              <td>{{ vm.size.w }} x {{ vm.size.h }}</td>
             </tr>
             <tr>
-              <td>File Size</td><td>{{ vm.fileSize }}</td>
+              <td>File Size</td>
+              <td>{{ vm.fileSize }}</td>
             </tr>
             <tr>
-              <td>Last Decode Time</td><td>{{ vm.lastDecodeFrameTime.toFixed(2) }}</td>
-            </tr>
-            <tr>
-              <td><span class="key">[ ]</span></td><td>Zoom In / Out</td>
-            </tr>
-            <tr>
-              <td><span class="key">.</span></td><td>Next Frame</td>
-            </tr>
-            <tr>
-              <td><span class="key">Space</span></td><td>Play / Stop</td>
+              <td>Decode Time</td>
+              <td>{{ vm.lastDecodeFrameTime.toFixed(2) }}ms</td>
             </tr>
           </table>
 
-
-          <h1 class="md-subhead">Toggle Layers</h1>
+          <h1 class="title">Toggle Layers</h1>
           <div ng-repeat="(name, option) in vm.options" style="padding: 0px; padding-left: 8px;">
-            <md-checkbox ng-model="vm[name]" ng-change="vm.uiViewChange()">
+            <md-checkbox ng-model="vm[name]" ng-change="vm.uiChange()">
               {{option.description}} [<span class="key">{{option.key}}</span>]
               <md-tooltip md-direction="right">
                 {{option.detail}}
@@ -156,7 +184,31 @@
             </md-checkbox>
           </div>
 
+          <h1 class="title">Preferences</h1>
+          <div>
+            <div class="label">Grid Color</div>
+            <color-picker color-picker-pos="'top left'" color-picker-swatch-only="true" ng-model="vm.gridColor" color-picker-on-change="vm.uiChange()" ></color-picker>
+          </div>
 
+          <div>
+            <div class="label">Split Grid Color</div>
+            <color-picker color-picker-pos="'top left'" color-picker-swatch-only="true" ng-model="vm.splitGridColor" color-picker-on-change="vm.uiChange()"></color-picker>
+          </div>
+
+          <div>
+            <div class="label">MV Color</div>
+            <color-picker color-picker-pos="'top left'" color-picker-swatch-only="true" ng-model="vm.mvColor" color-picker-on-change="vm.uiChange()"></color-picker>
+          </div>
+
+          <div>
+            <div class="label">Skip Color</div>
+            <color-picker color-picker-pos="'top left'" color-picker-swatch-only="true" ng-model="vm.skipColor" color-picker-on-change="vm.uiChange()"></color-picker>
+          </div>
+
+          <div>
+            <div class="label">Sharing Link</div>
+            <input ng-model="vm.sharingLink" style="width: 100%; padding: 6px; color: lightslategrey;" select-on-click>
+          </div>
         </md-content>
       </md-sidenav>
       <md-content flex layout="row" style="overflow: scroll;">
@@ -169,12 +221,11 @@
       </md-content>
       <md-content ng-hide="!vm.showInfo" style="background-color: #F5F5F5; width: 512px;">
         <canvas id="zoom" oncontextmenu="event.preventDefault()" style="left: 0; bottom: 0; z-index: 1000; image-rendering: pixelated;"
-              width=0 height=0></canvas>
-              <br>
+          width=0 height=0></canvas>
+        <br>
         <md-content layout-padding>
-          Prediction Mode: {{ vm.uiMIMode() }}<br>
-          Dering Gain: {{ vm.uiMIDeringGain() }}<br>
-          Block Size: {{ vm.uiMIBlockSize() }}<br>
+          Prediction Mode: {{ vm.uiMIMode() }}<br> Dering Gain: {{ vm.uiMIDeringGain() }}<br> Block Size: {{ vm.uiMIBlockSize() }}
+          <br>
         </md-content>
       </md-content>
     </div>
@@ -189,6 +240,10 @@
 
   <!-- Angular Material Library -->
   <script src="lib/angular-material.min.js"></script>
+  <script src="lib/tinycolor-min.js"></script>
+  <script src="lib/tinygradient.min.js"></script>
+  <script src="lib/angularjs-color-picker.min.js"></script>
+
 
   <script src="lib/jsGradient.js"></script>
   <script src="app.js"></script>

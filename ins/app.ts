@@ -324,6 +324,7 @@ class AppCtrl {
   predictionModeColors: string [] = colors;
   blockSizeNames: string [] = [];
 
+  modeColor = "hsl(79, 20%, 50%)";
   mvColor = "hsl(232, 36%, 41%)";
   skipColor = "hsla(326, 53%, 42%, 0.19)";
   gridColor = "rgba(33,33,33,0.75)";
@@ -762,18 +763,62 @@ class AppCtrl {
     var ctx = this.overlayContext;
     var cols = this.aom.get_mi_cols();
     var rows = this.aom.get_mi_rows();
-    ctx.strokeStyle = "rgba(33,33,33,0.75)";
-
     var s = this.scale * this.ratio;
+    var lineWidth = 3;
+    var lineOffset = 0.5;
+    ctx.lineWidth = lineWidth;
+    ctx.strokeStyle = this.modeColor;
     ctx.globalAlpha = 0.5;
+    function line(x, y, dx, dy) {
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + dx, y + dy);
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    function mode(m: AOMAnalyzerPredictionMode, x, y, dx, dy) {
+      var hx = dx / 2;
+      var hy = dy / 2;
+      switch (m) {
+        case AOMAnalyzerPredictionMode.V_PRED:
+          line(x + hx + lineOffset, y, 0, dy);
+          break;
+        case AOMAnalyzerPredictionMode.H_PRED:
+          line(x, y + hy + lineOffset, dx, 0);
+          break;
+        case AOMAnalyzerPredictionMode.D45_PRED:
+          line(x, y, dx, dy);
+          break;
+        case AOMAnalyzerPredictionMode.D135_PRED:
+          line(x + dx, y, -dx, dy);
+          break;
+        case AOMAnalyzerPredictionMode.D117_PRED:
+          line(x + dx, y, -hx, dy);
+          break;
+        case AOMAnalyzerPredictionMode.D153_PRED:
+          line(x + dx, y, -dx, hy);
+          break;
+        case AOMAnalyzerPredictionMode.D207_PRED:
+          line(x + hx, y, hx, dy);
+          break;
+        case AOMAnalyzerPredictionMode.D63_PRED:
+          line(x, y, hx, dy);
+          break;
+        default:
+          ctx.fillStyle = colors[m];
+          ctx.fillRect(x, y, dx, dy);
+          break;
+      }
+    }
 
     for (var c = 0; c < cols; c++) {
       for (var r = 0; r < rows; r++) {
         var i = this.aom.get_mi_mode(c, r);
-        ctx.fillStyle = colors[i];
-        ctx.fillRect(c * 8 * s, r * 8 * s, 8 * s, 8 * s);
+        mode(i, c * 8 * s, r * 8 * s, 8 * s, 8 * s);
       }
     }
+
   }
 
   drawSkip() {

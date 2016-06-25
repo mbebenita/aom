@@ -61,6 +61,8 @@ typedef struct AV1AnalyzerMI {
   AV1AnalyzerMV mv;
   AV1AnalyzerPredictionMode mode;
   int8_t dering_gain;
+  int8_t skip;
+  uint8_t block_size;
 } AV1AnalyzerMI;
 
 typedef struct AV1AnalyzerMIBuffer {

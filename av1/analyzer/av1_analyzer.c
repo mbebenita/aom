@@ -9,6 +9,7 @@
 #include "../decoder/decoder.h"
 
 #include "av1_analyzer.h"
+#include "../common/blockd.h"
 
 // Saves the decoder state.
 aom_codec_err_t av1_analyze_frame(struct AV1Decoder *pbi) {
@@ -41,6 +42,10 @@ aom_codec_err_t av1_analyze_frame(struct AV1Decoder *pbi) {
         mi->mode = mbmi->mode;
         // Deringing Gain
         mi->dering_gain = mbmi->dering_gain;
+        // Block size
+        mi->block_size = mbmi->sb_type;
+        // Skip flag
+        mi->skip = mbmi->skip;
       }
     }
   }

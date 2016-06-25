@@ -227,6 +227,20 @@ int get_mi_mode(int c, int r) {
 }
 
 EMSCRIPTEN_KEEPALIVE
+int get_mi_skip(int c, int r) {
+  AV1AnalyzerMI *mi =
+    &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
+  return mi->skip;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int get_mi_block_size(int c, int r) {
+  AV1AnalyzerMI *mi =
+    &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
+  return mi->block_size;
+}
+
+EMSCRIPTEN_KEEPALIVE
 int get_dering_gain(int c, int r) {
   AV1AnalyzerMI *mi =
     &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];

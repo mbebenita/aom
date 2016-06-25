@@ -6,6 +6,7 @@
   <!-- Angular Material style sheet -->
   <link rel="stylesheet" href="lib/angular-material.min.css">
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+
   <style type="text/css">
     html {
       font-size: 62.5%;
@@ -62,20 +63,8 @@
             View
           </button>
         <md-menu-content>
-          <md-menu-item type="checkbox" ng-model="vm.showGrid" ng-change="vm.uiViewChange()">
-            Show grid
-          </md-menu-item>
-          <md-menu-item type="checkbox" ng-model="vm.showMotionVectors" ng-change="vm.uiViewChange()">
-            Show motion vectors
-          </md-menu-item>
-          <md-menu-item type="checkbox" ng-model="vm.showImage" ng-change="vm.uiViewChange()">
-            Show image
-          </md-menu-item>
-          <md-menu-item type="checkbox" ng-model="vm.showDering" ng-change="vm.uiViewChange()">
-            Show dering
-          </md-menu-item>
-          <md-menu-item type="checkbox" ng-model="vm.showMode" ng-change="vm.uiViewChange()">
-            Show mode
+          <md-menu-item ng-repeat="(name, option) in vm.options" type="checkbox" ng-model="vm[name]" ng-change="vm.uiViewChange()">
+            {{option.description}}
           </md-menu-item>
           <md-menu-item class="md-indent">
             <md-menu>
@@ -96,9 +85,9 @@
     <md-toolbar class="md-toolbar-tools" style="background-color:">
       AOM Inspector
       <span flex></span>
-      <md-button ng-click="vm.uiPreviousFrame()" class="md-icon-button">
+      <!--<md-button ng-click="vm.uiPreviousFrame()" class="md-icon-button">
         <i class="material-icons">skip_previous</i>
-      </md-button>
+      </md-button>-->
 
       <md-button ng-click="vm.uiPlayPause()" class="md-icon-button">
         <i class="material-icons">{{vm.isPlaying ? "pause" : "play_arrow"}}</i>
@@ -136,13 +125,13 @@
           </table>
           <table width="100%">
             <tr>
-              <td>[ ]</td><td>Zoom In / Out</td>
+              <td><pre>[ ]</pre></td><td>Zoom In / Out</td>
             </tr>
             <tr>
-              <td>.</td><td>Next Frame</td>
+              <td><pre>.</pre></td><td>Next Frame</td>
             </tr>
             <tr>
-              <td>Space</td><td>Play / Stop</td>
+              <td><pre>Space</pre></td><td>Play / Stop</td>
             </tr>
           </table>
           <table>
@@ -158,56 +147,14 @@
                 <md-checkbox ng-model="vm.showV" ng-change="vm.uiViewChange()">V</md-checkbox>
               </td>
             </tr>
-            <tr>
+            <tr ng-repeat="(name, option) in vm.uiOptions">
               <td colspan="2">
-                <md-checkbox ng-model="vm.showGrid" ng-change="vm.uiViewChange()">
-                  Show Grid (1)
+                <md-checkbox ng-model="vm[name]" ng-change="vm.uiViewChange()">
+                  {{option.description}} ({{option.key}})
+                  <md-tooltip md-direction="right">
+                    {{option.detail}}
+                  </md-tooltip>
                 </md-checkbox>
-              </td>
-            </tr>
-            <tr>
-              <td colspan="2">
-                <md-checkbox ng-model="vm.showMotionVectors" ng-change="vm.uiViewChange()">
-                  Show Motion Vectors (2)
-                </md-checkbox>
-              </td>
-            </tr>
-            <tr>
-              <td colspan="2">
-                <md-checkbox ng-model="vm.showImage" ng-change="vm.uiViewChange()">
-                  Show Image (3)
-                </md-checkbox>
-              </td>
-            </tr>
-            <tr>
-              <td colspan="2">
-                <md-checkbox ng-model="vm.showDering" ng-change="vm.uiViewChange()">
-                  Show Dering (4)
-                </md-checkbox>
-              </td>
-            </tr>
-            <tr>
-              <td colspan="2">
-                <md-checkbox ng-model="vm.showMode" ng-change="vm.uiViewChange()">
-                  Show Prediction Modes (5)
-                </md-checkbox>
-              </td>
-            </tr>
-            <tr>
-              <td colspan="2">
-                <md-checkbox ng-model="vm.showInfo" ng-change="vm.uiViewChange()">
-                  Show Info (6)
-                </md-checkbox>
-              </td>
-            </tr>
-            <tr>
-              <td colspan="2" style="padding-left: 10px;">
-                <table>
-                  <tr ng-repeat="key in vm.predictionModeNames">
-                    <td style="width: 200px;">{{ key }}</td>
-                    <td style="height: 16px; width: 16px; background-color: {{ vm.predictionModeColors[$index] }};"></td>
-                  </tr>
-                </table>
               </td>
             </tr>
           </table>
@@ -227,7 +174,8 @@
               <br>
         <md-content layout-padding>
           Prediction Mode: {{ vm.uiMIMode() }}<br>
-          Dering Gain: {{ vm.uiMIDeringGain() }}
+          Dering Gain: {{ vm.uiMIDeringGain() }}<br>
+          Block Size: {{ vm.uiMIBlockSize() }}<br>
         </md-content>
       </md-content>
     </div>

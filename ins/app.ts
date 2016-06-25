@@ -42,6 +42,22 @@ enum AOMAnalyzerPredictionMode {
   NEWMV 			= 13
 }
 
+enum AOMAnalyzerBlockSize {
+  BLOCK_4X4   = 0,
+  BLOCK_4X8   = 1,
+  BLOCK_8X4   = 2,
+  BLOCK_8X8   = 3,
+  BLOCK_8X16  = 4,
+  BLOCK_16X8  = 5,
+  BLOCK_16X16 = 6,
+  BLOCK_16X32 = 7,
+  BLOCK_32X16 = 8,
+  BLOCK_32X32 = 9,
+  BLOCK_32X64 = 10,
+  BLOCK_64X32 = 11,
+  BLOCK_64X64 = 12
+}
+
 interface AOMInternal {
   _read_frame (): number;
   _get_plane (pli: number): number;
@@ -52,6 +68,8 @@ interface AOMInternal {
   _get_mi_cols(): number;
   _get_mi_mv(c: number, r: number): number;
   _get_mi_mode(c: number, r: number): AOMAnalyzerPredictionMode;
+  _get_mi_skip(c: number, r: number): number;
+  _get_mi_block_size(c: number, r: number): AOMAnalyzerBlockSize;
   _get_dering_gain(c: number, r: number): number;
   _get_frame_count(): number;
   _get_frame_width(): number;
@@ -95,6 +113,12 @@ class AOM {
   }
   get_mi_mode(c: number, r: number): AOMAnalyzerPredictionMode {
     return this.native._get_mi_mode(c, r);
+  }
+  get_mi_skip(c: number, r: number): number {
+    return this.native._get_mi_skip(c, r);
+  }
+  get_mi_block_size(c: number, r: number): AOMAnalyzerBlockSize {
+    return this.native._get_mi_block_size(c, r);
   }
   get_dering_gain(c: number, r: number): number {
     return this.native._get_dering_gain(c, r);
@@ -184,12 +208,79 @@ class AppCtrl {
   showV: boolean = true;
 
   showGrid: boolean = false;
+  showSplit: boolean = false;
   showMotionVectors: boolean = false;
   showImage: boolean = true;
   showDering: boolean = false;
   showMode: boolean = false;
+  showInfo: boolean = false;
+  showSkip: boolean = false;
 
-  showInfo: boolean = true;
+  options = {
+    showY: {
+      key: "y",
+      description: "Show Y"
+    },
+    showU: {
+      key: "u",
+      description: "Show U"
+    },
+    showV: {
+      key: "v",
+      description: "Show V"
+    },
+    showGrid: {
+      key: "0",
+      description: "Show Grid",
+      detail: "Shows 8x8 mode info grid."
+    },
+    showDering: {
+      key: "1",
+      description: "Show Dering",
+      detail: "Shows blocks where the deringing filter is applied."
+    },
+    showImage: {
+      key: "2",
+      description: "Show Image",
+      detail: "Shows image planes."
+    },
+    showMotionVectors: {
+      key: "3",
+      description: "Show Motion Vectors",
+      detail: "Shows motion vectors"
+    },
+    showMode: {
+      key: "4",
+      description: "Show Mode",
+      detail: "Shows prediction modes."
+    },
+    showInfo: {
+      key: "5",
+      description: "Show Info",
+      detail: "Shows mode info details."
+    },
+    showSkip: {
+      key: "6",
+      description: "Show Skip",
+      detail: "Shows skip flags."
+    },
+    showSplit: {
+      key: "7",
+      description: "Show Split Grid"
+    },
+  };
+
+  uiOptions = {
+    showGrid: this.options.showGrid,
+    showDering: this.options.showDering,
+    showImage: this.options.showImage,
+    showMotionVectors: this.options.showMotionVectors,
+    showMode: this.options.showMode,
+    showInfo: this.options.showInfo,
+    showSkip: this.options.showSkip,
+    showSplit: this.options.showSplit
+  };
+
   frameNumber: number = 0;
 
   progressValue = 0;
@@ -221,6 +312,7 @@ class AppCtrl {
 
   predictionModeNames: string [] = [];
   predictionModeColors: string [] = colors;
+  blockSizeNames: string [] = [];
 
   $scope: any;
   $interval: any;
@@ -268,12 +360,12 @@ class AppCtrl {
     this.frameContext = this.frameCanvas.getContext("2d");
 
     var parameters = getUrlParameters();
-    ["showGrid", "showDering", "showImage", "showMotionVectors",
-     "showMode", "showY", "showU", "showV"].forEach(x => {
-      if (x in parameters) {
-        this[x] = parameters[x] == "true";
+    for (var option in this.options) {
+      if (option in parameters) {
+        // TODO: Check for boolean here..
+        this[option] = parameters[option] == "true";
       }
-    });
+    }
     var frames = parseInt(parameters.frameNumber) || 1;
 
     this.aom = new AOM();
@@ -285,13 +377,18 @@ class AppCtrl {
     });
 
     this.installKeyboardShortcuts();
-    this.initPredictionModeColors();
+    this.initEnums();
   }
 
-  initPredictionModeColors() {
+  initEnums() {
     for (var k in AOMAnalyzerPredictionMode) {
       if (isNaN(parseInt(k))) {
         this.predictionModeNames.push(k);
+      }
+    }
+    for (var k in AOMAnalyzerBlockSize) {
+      if (isNaN(parseInt(k))) {
+        this.blockSizeNames.push(k);
       }
     }
   }
@@ -330,12 +427,12 @@ class AppCtrl {
       self.uiApply();
     }
 
-    Mousetrap.bind(['1'], toggle.bind(this, "showGrid"));
-    Mousetrap.bind(['2'], toggle.bind(this, "showMotionVectors"));
-    Mousetrap.bind(['3'], toggle.bind(this, "showImage"));
-    Mousetrap.bind(['4'], toggle.bind(this, "showDering"));
-    Mousetrap.bind(['5'], toggle.bind(this, "showMode"));
-    Mousetrap.bind(['6'], toggle.bind(this, "showInfo"));
+    for (var name in this.options) {
+      var option = this.options[name];
+      if (option.key) {
+        Mousetrap.bind([option.key], toggle.bind(this, name));
+      }
+    }
   }
 
   onMouseMove(event: MouseEvent) {
@@ -367,6 +464,11 @@ class AppCtrl {
   uiMIDeringGain() {
     var mi = this.getMI();
     return this.aom.get_dering_gain(mi.x, mi.y);
+  }
+
+  uiMIBlockSize() {
+    var mi = this.getMI();
+    return this.blockSizeNames[this.aom.get_mi_block_size(mi.x, mi.y)];
   }
 
   openFileBytes(buffer: Uint8Array) {
@@ -564,7 +666,7 @@ class AppCtrl {
       for (var x = 0; x < w; x++) {
         var index = (Math.imul(y, w) + x) << 2;
 
-        var Y = showY ? H[Yp + Math.imul(y, Ys) + x] : 255;
+        var Y = showY ? H[Yp + Math.imul(y, Ys) + x] : 128;
         var U = showU ? H[Up + Math.imul(y >> 1, Us) + (x >> 1)] : 128;
         var V = showV ? H[Vp + Math.imul(y >> 1, Vs) + (x >> 1)] : 128;
 
@@ -607,6 +709,8 @@ class AppCtrl {
     this.showMotionVectors && this.drawMotionVectors();
     this.showDering && this.drawDering();
     this.showMode && this.drawMode();
+    this.showSkip && this.drawSkip();
+    this.showSplit && this.drawSplit();
   }
 
   drawMode() {
@@ -621,9 +725,126 @@ class AppCtrl {
     for (var c = 0; c < cols; c++) {
       for (var r = 0; r < rows; r++) {
         var i = this.aom.get_mi_mode(c, r);
-        // ctx.fillStyle = "rgba(33,33,33," + (i / 13) + ")";
         ctx.fillStyle = colors[i];
         ctx.fillRect(c * 8 * s, r * 8 * s, 8 * s, 8 * s);
+      }
+    }
+  }
+
+  drawSkip() {
+    var ctx = this.overlayContext;
+    var cols = this.aom.get_mi_cols();
+    var rows = this.aom.get_mi_rows();
+    ctx.strokeStyle = "rgba(33,33,33,0.75)";
+
+    var s = this.scale * this.ratio;
+    ctx.globalAlpha = 0.5;
+
+    for (var c = 0; c < cols; c++) {
+      for (var r = 0; r < rows; r++) {
+        var i = this.aom.get_mi_skip(c, r);
+        ctx.fillStyle = colors[i];
+        ctx.fillRect(c * 8 * s, r * 8 * s, 8 * s, 8 * s);
+      }
+    }
+  }
+
+  drawSplit() {
+    var ctx = this.overlayContext;
+    var cols = this.aom.get_mi_cols();
+    var rows = this.aom.get_mi_rows();
+    ctx.strokeStyle = "rgba(33,33,33,.50)";
+    var s = this.scale * this.ratio;
+    ctx.globalAlpha = 1;
+
+  // BLOCK_4X4   = 0,
+  // BLOCK_4X8   = 1,
+  // BLOCK_8X4   = 2,
+
+  // BLOCK_8X8   = 3,
+  // BLOCK_8X16  = 4,
+  // BLOCK_16X8  = 5,
+  // BLOCK_16X16 = 6,
+  // BLOCK_16X32 = 7,
+  // BLOCK_32X16 = 8,
+  // BLOCK_32X32 = 9,
+  // BLOCK_32X64 = 10,
+  // BLOCK_64X32 = 11,
+  // BLOCK_64X64 = 12
+
+    var sizes = [
+      [2, 2],
+      [2, 3],
+      [3, 2],
+      [3, 3, "rgba(33, 33, 33, .02)"],
+      [3, 4, "rgba(33, 33, 33, .04)"],
+      [4, 3, "rgba(33, 33, 33, .06)"],
+      [4, 4, "rgba(33, 33, 33, .08)"],
+      [4, 5, "rgba(33, 33, 33, .10)"],
+      [5, 4, "rgba(33, 33, 33, .12)"],
+      [5, 5, "rgba(33, 33, 33, .14)"],
+      [5, 6, "rgba(33, 33, 33, .16)"],
+      [6, 5, "rgba(33, 33, 33, .18)"],
+      [6, 6, "rgba(33, 33, 33, .20)"]
+    ];
+
+    var lineWidth = 1;
+    var lineOffset = lineWidth / 2;
+    function split(x, y, dx, dy) {
+      ctx.beginPath();
+      ctx.save();
+      ctx.translate(lineOffset, lineOffset);
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + dx, y);
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y + dy);
+      ctx.restore();
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    // Draw block sizes above 8x8.
+    for (var i = 3; i < sizes.length; i++) {
+      var dc = 1 << (sizes[i][0] - 3);
+      var dr = 1 << (sizes[i][1] - 3);
+      for (var c = 0; c < cols; c += dc) {
+        for (var r = 0; r < rows; r += dr) {
+          var t = this.aom.get_mi_block_size(c, r);
+          if (t == i) {
+            split(c * s * 8, r * s * 8, dc * s * 8, dr * s * 8);
+          }
+        }
+      }
+    }
+
+    // Draw block sizes below 8x8.
+    for (var c = 0; c < cols; c ++) {
+      for (var r = 0; r < rows; r ++) {
+        var t = this.aom.get_mi_block_size(c, r);
+        var x = c * s * 8;
+        var y = r * s * 8;
+        switch (t) {
+          case 0:
+            var dx = 4 * s;
+            var dy = 4 * s;
+            split(x,      y,      dx, dy);
+            split(x + dx, y,      dx, dy);
+            split(x,      y + dy, dx, dy);
+            split(x + dx, y + dy, dx, dy);
+            break;
+          case 1:
+            var dx = 4 * s;
+            var dy = 8 * s;
+            split(x,      y, dx, dy);
+            split(x + dx, y, dx, dy);
+            break;
+          case 2:
+            var dx = 8 * s;
+            var dy = 4 * s;
+            split(x, y,      dx, dy);
+            split(x, y + dy, dx, dy);
+            break;
+        }
       }
     }
   }

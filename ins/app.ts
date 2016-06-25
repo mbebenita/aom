@@ -788,22 +788,22 @@ class AppCtrl {
           line(x, y + hy + lineOffset, dx, 0);
           break;
         case AOMAnalyzerPredictionMode.D45_PRED:
-          line(x, y, dx, dy);
-          break;
-        case AOMAnalyzerPredictionMode.D135_PRED:
-          line(x + dx, y, -dx, dy);
-          break;
-        case AOMAnalyzerPredictionMode.D117_PRED:
-          line(x + dx, y, -hx, dy);
-          break;
-        case AOMAnalyzerPredictionMode.D153_PRED:
-          line(x + dx, y, -dx, hy);
-          break;
-        case AOMAnalyzerPredictionMode.D207_PRED:
-          line(x + hx, y, hx, dy);
+          line(x, y + dy, dx, -dy);
           break;
         case AOMAnalyzerPredictionMode.D63_PRED:
-          line(x, y, hx, dy);
+          line(x, y + dy, hx, -dy);
+          break;
+        case AOMAnalyzerPredictionMode.D135_PRED:
+          line(x, y, dx, dy);
+          break;
+        case AOMAnalyzerPredictionMode.D117_PRED:
+          line(x + hx, y, hx, dy);
+          break;
+        case AOMAnalyzerPredictionMode.D153_PRED:
+          line(x, y + hy, dx, hy);
+          break;
+        case AOMAnalyzerPredictionMode.D207_PRED:
+          line(x, y + hy, dx, -hy);
           break;
         default:
           ctx.fillStyle = colors[m];

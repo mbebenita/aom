@@ -1,6 +1,7 @@
 declare var angular: any;
 declare var FS: any;
 declare var Mousetrap: any;
+declare var jsgradient: any;
 
 var colors = [
   "#E85EBE", "#009BFF", "#00FF00", "#0000FF", "#FF0000", "#01FFFE", "#FFA6FE",
@@ -13,6 +14,8 @@ var colors = [
   "#FFE502", "#620E00", "#008F9C", "#98FF52", "#7544B1", "#B500FF", "#00FF78",
   "#FF6E41", "#005F39", "#6B6882", "#5FAD4E", "#A75740", "#A5FFD2", "#FFB167"
 ];
+
+var blueColors = jsgradient.generateGradient('#C5CAE9', '#1A237E', 32);
 
 function hexToRGB(hex: string, alpha: number = 0) {
   var r = parseInt(hex.slice(1,3), 16),
@@ -219,55 +222,63 @@ class AppCtrl {
   options = {
     showY: {
       key: "y",
-      description: "Show Y"
+      description: "Show Y",
+      detail: "Shows Y image plane.",
+      updatesImage: true
     },
     showU: {
       key: "u",
-      description: "Show U"
+      description: "Show U",
+      detail: "Shows U image plane.",
+      updatesImage: true
     },
     showV: {
       key: "v",
-      description: "Show V"
+      description: "Show V",
+      detail: "Shows V image plane.",
+      updatesImage: true
+    },
+    showImage: {
+      key: "1",
+      description: "Show Image",
+      detail: "Shows image planes.",
+      updatesImage: true
     },
     showGrid: {
-      key: "0",
+      key: "2",
       description: "Show Grid",
       detail: "Shows 8x8 mode info grid."
     },
+    showSplit: {
+      key: "3",
+      description: "Show Split Grid",
+      detail: "Shows block partitions."
+    },
     showDering: {
-      key: "1",
+      key: "4",
       description: "Show Dering",
       detail: "Shows blocks where the deringing filter is applied."
     },
-    showImage: {
-      key: "2",
-      description: "Show Image",
-      detail: "Shows image planes."
-    },
     showMotionVectors: {
-      key: "3",
+      key: "5",
       description: "Show Motion Vectors",
-      detail: "Shows motion vectors"
+      detail: "Shows motion vectors, darker colors represent longer vectors."
     },
     showMode: {
-      key: "4",
+      key: "6",
       description: "Show Mode",
       detail: "Shows prediction modes."
     },
     showInfo: {
-      key: "5",
+      key: "7",
       description: "Show Info",
       detail: "Shows mode info details."
     },
     showSkip: {
-      key: "6",
+      key: "8",
       description: "Show Skip",
       detail: "Shows skip flags."
-    },
-    showSplit: {
-      key: "7",
-      description: "Show Split Grid"
-    },
+    }
   };
 
   uiOptions = {
@@ -421,8 +432,12 @@ class AppCtrl {
 
     var self = this;
     function toggle(name) {
+      var option = this.options[name];
       self[name] = !self[name];
-      // self.drawFrame();
+      if (option.updatesImage) {
+        self.clearImage();
+        self.drawImage();
+      }
       self.drawLayers();
       self.uiApply();
     }
@@ -757,21 +772,6 @@ class AppCtrl {
     var s = this.scale * this.ratio;
     ctx.globalAlpha = 1;
 
-  // BLOCK_4X4   = 0,
-  // BLOCK_4X8   = 1,
-  // BLOCK_8X4   = 2,
-
-  // BLOCK_8X8   = 3,
-  // BLOCK_8X16  = 4,
-  // BLOCK_16X8  = 5,
-  // BLOCK_16X16 = 6,
-  // BLOCK_16X32 = 7,
-  // BLOCK_32X16 = 8,
-  // BLOCK_32X32 = 9,
-  // BLOCK_32X64 = 10,
-  // BLOCK_64X32 = 11,
-  // BLOCK_64X64 = 12
-
     var sizes = [
       [2, 2],
       [2, 3],
@@ -909,6 +909,29 @@ class AppCtrl {
     return;
   }
 
+  drawVector3(a: Vector, b: Vector) {
+    var ctx = this.overlayContext;
+    var c = b.clone().sub(a);
+    var length = c.length();
+
+    c.add(a);
+
+    ctx.fillStyle = "#000000";
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, this.scale, 0, 2 * Math.PI);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(c.x, c.y);
+    ctx.closePath();
+    ctx.stroke();
+
+
+    return;
+  }
+
   drawVector2(p1: Vector, p2: Vector) {
     var ctx = this.overlayContext;
     ctx.save();
@@ -924,17 +947,25 @@ class AppCtrl {
 
     if (p2.x < p1.x) angle = 2 * Math.PI - angle;
 
-    var size = 2 * Math.min(this.scale, 2);
+    var size = 2 * Math.min(this.scale, 4);
 
     ctx.beginPath();
     ctx.translate(p2.x, p2.y);
     ctx.rotate(-angle);
     ctx.lineWidth = 1;
-    ctx.moveTo(0, -size);
+
+    ctx.moveTo(0, 0);
     ctx.lineTo(-size, -size);
     ctx.lineTo(0, size * 2);
     ctx.lineTo(size, -size);
-    ctx.lineTo(0, -size);
+    ctx.lineTo(0, 0);
+
+    // ctx.moveTo(0, -size);
+    // ctx.lineTo(-size, -size);
+    // ctx.lineTo(0, size * 2);
+    // ctx.lineTo(size, -size);
+    // ctx.lineTo(0, -size);
+
     ctx.closePath();
     ctx.fill();
     ctx.restore();
@@ -945,8 +976,7 @@ class AppCtrl {
     var cols = this.aom.get_mi_cols();
     var rows = this.aom.get_mi_rows();
     var s = this.scale * this.ratio;
-    ctx.globalAlpha = 1;
-
+    ctx.globalAlpha = 0.5;
     for (var c = 0; c < cols; c++) {
       for (var r = 0; r < rows; r++) {
         var i = this.aom.get_mi_mv(c, r);
@@ -955,20 +985,25 @@ class AppCtrl {
         if (x == 0 && y == 0) {
           continue;
         }
-        var offset = s * 8 / 2;
-        var a = new Vector(c * 8 * s + offset, r * 8 * s + offset);
-        var v = new Vector(x, y).divideScalar(8).multiplyScalar(s);
-        var l = v.length();
-        v.clampLength(4, Infinity);
-        // v.clampLength(4, s * 8);
-        // ctx.lineWidth = Math.max(1, l / 32);
-        ctx.fillStyle = ctx.strokeStyle = "rgba(33,33,33," + (l / 32) + ")";
-        this.drawVector2(
-          a.clone().add(v),
-          a
-        )
+        var v = new Vector(x, y);
+        v.clampLength(0, 31);
+        var l = v.length() | 0;
+        ctx.fillStyle = blueColors[l | 0];
+        ctx.fillRect(c * 8 * s, r * 8 * s, 8 * s, 8 * s);
+
+        // var offset = s * 8 / 2;
+        // var a = new Vector(c * 8 * s + offset, r * 8 * s + offset);
+        // var v = new Vector(x, y).divideScalar(8).multiplyScalar(s);
+        // var l = v.length() | 0;
+        // v.clampLength(0, 31);
+
+        // this.drawVector3(
+        //   a.clone().add(v),
+        //   a
+        // )
       }
     }
+    ctx.globalAlpha = 1;
   }
 }
 

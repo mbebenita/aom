@@ -17,9 +17,27 @@
       font-size: 1.6em;
     }
 
-    tr {
+    table {
       font-size: 14px;
     }
+
+    md-checkbox {
+      margin: 8px;
+      cursor: pointer;
+      padding-left: 0px;
+      padding-right: 0;
+      line-height: 10px;
+      min-width: 10px;
+      min-height: 10px;
+      font-size: 14px;
+    }
+
+    .key {
+      font-family: monospace;
+      color: blueviolet;
+      font-weight: bold;
+    }
+
     #fileInput { display: none; }
   </style>
 </head>
@@ -31,6 +49,7 @@
     <md-progress-linear md-mode="{{vm.progressMode}}" value="{{vm.determinateValue}}"></md-progress-linear>
     <!--Menu-->
     <md-menu-bar>
+      <span class="md-title" style="padding-right: 100px">AOM Analyzer</span>
       <md-menu>
         <button ng-click="$mdOpenMenu()">
             File
@@ -81,27 +100,20 @@
       </md-menu>
     </md-menu-bar>
 
-    <!--Toolbar-->
-    <md-toolbar class="md-toolbar-tools" style="background-color:">
-      AOM Inspector
-      <span flex></span>
-      <!--<md-button ng-click="vm.uiPreviousFrame()" class="md-icon-button">
-        <i class="material-icons">skip_previous</i>
-      </md-button>-->
-
-      <md-button ng-click="vm.uiPlayPause()" class="md-icon-button">
-        <i class="material-icons">{{vm.isPlaying ? "pause" : "play_arrow"}}</i>
-      </md-button>
-
-      <md-button ng-click="vm.uiNextFrame()" class="md-icon-button">
-        <i class="material-icons">skip_next</i>
-      </md-button>
-
-      <span flex></span>
-    </md-toolbar>
-
     <div flex layout="row">
-      <md-sidenav class="md-sidenav-left md-whiteframe-z2" md-component-id="left" md-is-locked-open="true">
+      <md-sidenav class="md-sidenav-left md-whiteframe-z2" md-component-id="left" md-is-locked-open="true" style="width: 256px">
+        <!--Toolbar-->
+        <md-toolbar class="md-toolbar-tools" style="background-color:">
+          <md-button ng-click="vm.uiPlayPause()" class="md-icon-button">
+            <i class="material-icons">{{vm.isPlaying ? "pause" : "play_arrow"}}</i>
+          </md-button>
+
+          <md-button ng-click="vm.uiNextFrame()" class="md-icon-button">
+            <i class="material-icons">skip_next</i>
+          </md-button>
+
+          <span flex></span>
+        </md-toolbar>
         <md-content layout-padding>
           <table width="100%">
             <tr>
@@ -122,42 +134,29 @@
             <tr>
               <td>Last Decode Time</td><td>{{ vm.lastDecodeFrameTime.toFixed(2) }}</td>
             </tr>
-          </table>
-          <table width="100%">
             <tr>
-              <td><pre>[ ]</pre></td><td>Zoom In / Out</td>
+              <td><span class="key">[ ]</span></td><td>Zoom In / Out</td>
             </tr>
             <tr>
-              <td><pre>.</pre></td><td>Next Frame</td>
+              <td><span class="key">.</span></td><td>Next Frame</td>
             </tr>
             <tr>
-              <td><pre>Space</pre></td><td>Play / Stop</td>
+              <td><span class="key">Space</span></td><td>Play / Stop</td>
             </tr>
           </table>
-          <table>
-            <tr>
-              <td colspan="2">
-                Color Planes
-              </td>
-            </tr>
-            <tr>
-              <td colspan="2">
-                <md-checkbox ng-model="vm.showY" ng-change="vm.uiViewChange()">Y</md-checkbox>
-                <md-checkbox ng-model="vm.showU" ng-change="vm.uiViewChange()">U</md-checkbox>
-                <md-checkbox ng-model="vm.showV" ng-change="vm.uiViewChange()">V</md-checkbox>
-              </td>
-            </tr>
-            <tr ng-repeat="(name, option) in vm.uiOptions">
-              <td colspan="2">
-                <md-checkbox ng-model="vm[name]" ng-change="vm.uiViewChange()">
-                  {{option.description}} ({{option.key}})
-                  <md-tooltip md-direction="right">
-                    {{option.detail}}
-                  </md-tooltip>
-                </md-checkbox>
-              </td>
-            </tr>
-          </table>
+
+
+          <h1 class="md-subhead">Toggle Layers</h1>
+          <div ng-repeat="(name, option) in vm.options" style="padding: 0px; padding-left: 8px;">
+            <md-checkbox ng-model="vm[name]" ng-change="vm.uiViewChange()">
+              {{option.description}} [<span class="key">{{option.key}}</span>]
+              <md-tooltip md-direction="right">
+                {{option.detail}}
+              </md-tooltip>
+            </md-checkbox>
+          </div>
+
+
         </md-content>
       </md-sidenav>
       <md-content flex layout="row" style="overflow: scroll;">
@@ -182,16 +181,6 @@
   </div>
 
 
-
-
-  <!--<div class="inset">
-    <md-switch ng-model="vm.showGrid" aria-label="Grid">
-    Grid
-    </md-switch>
-  </div>-->
-
-
-
   <!-- Angular Material requires Angular.js Libraries -->
   <script src="lib/angular.min.js"></script>
   <script src="lib/angular-animate.min.js"></script>
@@ -201,9 +190,10 @@
   <!-- Angular Material Library -->
   <script src="lib/angular-material.min.js"></script>
 
-
+  <script src="lib/jsGradient.js"></script>
   <script src="app.js"></script>
   <script src="lib/mousetrap.min.js"></script>
+
   <script src="bin/decoder.js"></script>
 
 </body>

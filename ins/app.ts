@@ -27,6 +27,10 @@ function hexToRGB(hex: string, alpha: number = 0) {
   return "rgb(" + r + ", " + g + ", " + b + a + ")";
 }
 
+function getLineOffset(lineWidth: number) {
+  return lineWidth % 2 == 0 ? 0 : 0.5;
+}
+
 enum AOMAnalyzerPredictionMode {
   DC_PRED 		= 0,   // Average of above and left pixels
   V_PRED 			= 1,   // Vertical
@@ -137,6 +141,44 @@ class Size {
   constructor(public w: number, public h: number) {
     // ...
   }
+  clone() {
+    return new Size(this.w, this.h);
+  }
+  multiplyScalar(scalar: number) {
+		if (isFinite(scalar)) {
+			this.w *= scalar;
+			this.h *= scalar;
+		} else {
+			this.w = 0;
+			this.h = 0;
+		}
+		return this;
+	}
+}
+
+class Rectangle {
+  constructor (public x: number, public y: number, public w: number, public h: number) {
+    // ...
+  }
+  static createRectangleCenteredAtPoint(v: Vector, w: number, h: number) {
+    return new Rectangle(v.x - w / 2, v.y - h / 2, w, h);
+  }
+  static createRectangleFromSize(size: Size) {
+    return new Rectangle(0, 0, size.w, size.h);
+  }
+  clone(): Rectangle {
+    return new Rectangle(this.x, this.y, this.w, this.h);
+  }
+  multiplyScalar(scalar: number) {
+		if (isFinite(scalar)) {
+			this.w *= scalar;
+			this.h *= scalar;
+		} else {
+			this.w = 0;
+			this.h = 0;
+		}
+		return this;
+	}
 }
 
 class Vector {
@@ -181,6 +223,12 @@ class Vector {
 	divideScalar(scalar) {
 		return this.multiplyScalar(1 / scalar);
 	}
+  snap() {
+    // TODO: Snap to nearest pixel
+		this.x = this.x | 0;
+    this.y = this.y | 0;
+    return this;
+	}
   sub(v: Vector): Vector {
 		this.x -= v.x;
 		this.y -= v.y;
@@ -200,7 +248,7 @@ class Vector {
 
 class AppCtrl {
   aom: AOM = null;
-  size: Size = new Size(128, 128);
+  frameSize: Size = new Size(128, 128);
   fileSize: number = 0;
   ratio: number = 1;
   scale: number = 1;
@@ -312,6 +360,7 @@ class AppCtrl {
   overlayContext: CanvasRenderingContext2D = null;
   zoomContext: CanvasRenderingContext2D = null;
   zoomSize = 512;
+  zoomLevel = 16;
   mousePosition: Vector = new Vector(0, 0);
   imageData: ImageData = null;
 
@@ -329,6 +378,9 @@ class AppCtrl {
   skipColor = "hsla(326, 53%, 42%, 0.19)";
   gridColor = "rgba(33,33,33,0.75)";
   splitGridColor = "rgba(33,33,33,0.50)";
+
+  gridLineWidth = 3;
+
   sharingLink = "";
 
   $scope: any;
@@ -463,7 +515,7 @@ class AppCtrl {
     }
     // console.info(getMousePosition(this.overlayCanvas, event));
     this.mousePosition = getMousePosition(this.overlayCanvas, event);
-    this.drawZoom();
+    this.drawInfo();
     this.uiApply();
   }
 
@@ -493,7 +545,7 @@ class AppCtrl {
     this.fileSize = buffer.length;
     FS.writeFile("/tmp/input.ivf", buffer, { encoding: "binary" });
     this.aom.open_file();
-    this.size = this.aom.getFrameSize();
+    this.frameSize = this.aom.getFrameSize();
     this.resetCanvases();
   }
 
@@ -505,23 +557,23 @@ class AppCtrl {
   }
 
   resetCanvases() {
-    this.frameCanvas.width = this.size.w;
-		this.frameCanvas.height = this.size.h;
+    this.frameCanvas.width = this.frameSize.w;
+		this.frameCanvas.height = this.frameSize.h;
 
-    this.imageData = this.frameContext.createImageData(this.size.w, this.size.h);
+    this.imageData = this.frameContext.createImageData(this.frameSize.w, this.frameSize.h);
 
-    this.container.style.width = (this.size.w * this.scale) + "px";
-		this.container.style.height = (this.size.h * this.scale) + "px";
+    this.container.style.width = (this.frameSize.w * this.scale) + "px";
+		this.container.style.height = (this.frameSize.h * this.scale) + "px";
 
-    this.displayCanvas.style.width = (this.size.w * this.scale) + "px";
-		this.displayCanvas.style.height = (this.size.h * this.scale) + "px";
-    this.displayCanvas.width = this.size.w * this.scale * this.ratio;
-		this.displayCanvas.height = this.size.h * this.scale * this.ratio;
+    this.displayCanvas.style.width = (this.frameSize.w * this.scale) + "px";
+		this.displayCanvas.style.height = (this.frameSize.h * this.scale) + "px";
+    this.displayCanvas.width = this.frameSize.w * this.scale * this.ratio;
+		this.displayCanvas.height = this.frameSize.h * this.scale * this.ratio;
 
-    this.overlayCanvas.style.width = (this.size.w * this.scale) + "px";
-		this.overlayCanvas.style.height = (this.size.h * this.scale) + "px";
-    this.overlayCanvas.width = this.size.w * this.scale * this.ratio;
-		this.overlayCanvas.height = this.size.h * this.scale * this.ratio;
+    this.overlayCanvas.style.width = (this.frameSize.w * this.scale) + "px";
+		this.overlayCanvas.style.height = (this.frameSize.h * this.scale) + "px";
+    this.overlayCanvas.width = this.frameSize.w * this.scale * this.ratio;
+		this.overlayCanvas.height = this.frameSize.h * this.scale * this.ratio;
 
     this.zoomCanvas.style.width = this.zoomSize + "px";
 		this.zoomCanvas.style.height = this.zoomSize + "px";
@@ -655,37 +707,108 @@ class AppCtrl {
     this.drawFrame();
   }
 
-  drawZoom() {
-    var v = this.mousePosition;
-
-    var rect = this.displayCanvas.getBoundingClientRect();
-
-    var size = 32;
-    var halfSize = size / 2;
-    // this.zoomCanvas.style.left = (rect.left + v.x - halfSize) + "px";
-    // this.zoomCanvas.style.top = (rect.top + v.y + 10) + "px";
+  drawInfo() {
+    var mousePosition = this.mousePosition.clone().divideScalar(this.scale).snap();
+    var src = Rectangle.createRectangleCenteredAtPoint(mousePosition, 64, 64);
+    var dst = new Rectangle(0, 0, this.zoomSize * this.ratio, this.zoomSize * this.ratio);
 
     this.zoomContext.mozImageSmoothingEnabled = false;
     this.zoomContext.imageSmoothingEnabled = false;
-
-    var x = v.x / this.scale | 0;
-    var y = v.y / this.scale | 0;
-    this.zoomContext.clearRect(0, 0, this.zoomSize * this.ratio, this.zoomSize * this.ratio);
+    this.zoomContext.clearRect(dst.x, dst.y, dst.w, dst.h);
     this.zoomContext.drawImage(this.frameCanvas,
-      x - halfSize, y - halfSize, size, size,
-      0, 0, this.zoomSize * this.ratio, this.zoomSize * this.ratio);
+      src.x, src.y, src.w, src.h,
+      dst.x, dst.y, dst.w, dst.h);
+    this.drawGridRegion(this.zoomContext, src, dst);
   }
+
+  drawGridRegion(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
+    var cols = this.aom.get_mi_cols();
+    var rows = this.aom.get_mi_rows();
+    var scale = dst.w / src.w | 0;
+    var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
+
+    var s = 8;
+    ctx.save();
+    ctx.lineWidth = this.gridLineWidth;
+    ctx.strokeStyle = this.gridColor;
+    ctx.globalAlpha = 1;
+    var lineOffset = getLineOffset(this.gridLineWidth);
+    ctx.translate(lineOffset, lineOffset);
+    ctx.translate(-src.x * scale, -src.y * scale);
+    ctx.beginPath();
+    for (var c = 0; c <= cols; c += 8) {
+      var offset = c * s * scale;
+      ctx.moveTo(offset, 0);
+      ctx.lineTo(offset, scaledFrameSize.h);
+    }
+    for (var r = 0; r <= rows; r += 8) {
+      var offset = r * s * scale;
+      ctx.moveTo(0, offset);
+      ctx.lineTo(scaledFrameSize.w, offset);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // drawGrid2(ctx: CanvasRenderingContext2D, src: Rectangle) {
+  //   ctx.strokeStyle = this.gridColor;
+  //   ctx.beginPath();
+  //   var scale = this.scale;
+  //   var s = 8 * scale * this.ratio;
+
+  //   var lineWidth = 3;
+  //   var lineOffset = 1 / 2;
+  //   for (var c = 0; c < cols + 1; c += 8) {
+  //     var offset = lineOffset + c * s;
+  //     ctx.moveTo(offset, 0);
+  //     ctx.lineTo(offset, this.frameSize.h * scale * this.ratio);
+  //   }
+  //   for (var r = 0; r < rows + 1; r += 8) {
+  //     var offset = lineOffset + r * s;
+  //     ctx.moveTo(0, offset);
+  //     ctx.lineTo(this.frameSize.w * scale * this.ratio, offset);
+  //   }
+  //   ctx.lineWidth = lineWidth;
+  //   ctx.closePath();
+  //   ctx.globalAlpha = 0.5;
+  //   ctx.stroke();
+  // }
+
+  // drawGrid2(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, cols: number, rows: number) {
+  //   ctx.strokeStyle = this.gridColor;
+  //   ctx.beginPath();
+  //   var scale = this.scale;
+  //   var s = 8 * scale * this.ratio;
+
+  //   var lineWidth = 3;
+  //   var lineOffset = 1 / 2;
+  //   for (var c = 0; c < cols + 1; c += 8) {
+  //     var offset = lineOffset + c * s;
+  //     ctx.moveTo(offset, 0);
+  //     ctx.lineTo(offset, this.size.h * scale * this.ratio);
+  //   }
+  //   for (var r = 0; r < rows + 1; r += 8) {
+  //     var offset = lineOffset + r * s;
+  //     ctx.moveTo(0, offset);
+  //     ctx.lineTo(this.size.w * scale * this.ratio, offset);
+  //   }
+  //   ctx.lineWidth = lineWidth;
+  //   ctx.closePath();
+  //   ctx.globalAlpha = 0.5;
+  //   ctx.stroke();
+  // }
 
   drawFrame() {
     this.clearImage();
     this.drawImage();
-    this.drawZoom();
+    this.drawInfo();
     this.drawLayers();
   }
 
   clearImage() {
     var ctx = this.displayContext;
-    ctx.clearRect(0, 0, this.size.w * this.scale * this.ratio, this.size.h * this.scale * this.ratio);
+    ctx.clearRect(0, 0, this.frameSize.w * this.scale * this.ratio, this.frameSize.h * this.scale * this.ratio);
   }
 
   drawImage() {
@@ -699,15 +822,14 @@ class AppCtrl {
     var I = this.imageData.data;
     var H = this.aom.HEAPU8;
 
-    var w = this.size.w;
-    var h = this.size.h;
+    var w = this.frameSize.w;
+    var h = this.frameSize.h;
 
 
     var showY = this.showY;
     var showU = this.showU;
     var showV = this.showV;
 
-    // var s = performance.now();
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         var index = (Math.imul(y, w) + x) << 2;
@@ -728,15 +850,14 @@ class AppCtrl {
         I[index + 3] = 255;
       }
     }
-    // console.log(performance.now() - s);
 
     if (this.showImage && this.imageData) {
       this.frameContext.putImageData(this.imageData, 0, 0);
       this.displayContext.mozImageSmoothingEnabled = false;
       this.displayContext.imageSmoothingEnabled = false;
 
-      var dw = this.size.w * this.scale * this.ratio;
-      var dh = this.size.h * this.scale * this.ratio;
+      var dw = this.frameSize.w * this.scale * this.ratio;
+      var dh = this.frameSize.h * this.scale * this.ratio;
       this.displayContext.drawImage(this.frameCanvas, 0, 0, dw, dh);
 
 
@@ -749,7 +870,7 @@ class AppCtrl {
     var ctx = this.overlayContext;
     var ratio = window.devicePixelRatio || 1;
 
-    ctx.clearRect(0, 0, this.size.w * this.scale * ratio, this.size.h * this.scale * ratio);
+    ctx.clearRect(0, 0, this.frameSize.w * this.scale * ratio, this.frameSize.h * this.scale * ratio);
 
     this.showGrid && this.drawGrid();
     this.showMotionVectors && this.drawMotionVectors();
@@ -943,31 +1064,9 @@ class AppCtrl {
   }
 
   drawGrid() {
-    var ctx = this.overlayContext;
-    ctx.strokeStyle = this.gridColor;
-    var cols = this.aom.get_mi_cols();
-    var rows = this.aom.get_mi_rows();
-    ctx.beginPath();
-    var ratio = window.devicePixelRatio || 1;
-    var scale = this.scale;
-    var s = 8 * scale * ratio;
-
-    var lineWidth = 3;
-    var lineOffset = 1 / 2;
-    for (var c = 0; c < cols + 1; c += 8) {
-      var offset = lineOffset + c * s;
-      ctx.moveTo(offset, 0);
-      ctx.lineTo(offset, this.size.h * scale * ratio);
-    }
-    for (var r = 0; r < rows + 1; r += 8) {
-      var offset = lineOffset + r * s;
-      ctx.moveTo(0, offset);
-      ctx.lineTo(this.size.w * scale * ratio, offset);
-    }
-    ctx.lineWidth = lineWidth;
-    ctx.closePath();
-    ctx.globalAlpha = 0.5;
-    ctx.stroke();
+    var src = Rectangle.createRectangleFromSize(this.frameSize);
+    var dst = src.clone().multiplyScalar(this.scale * this.ratio);
+    this.drawGridRegion(this.overlayContext, src, dst);
   }
 
   drawVector(a: Vector, b: Vector) {

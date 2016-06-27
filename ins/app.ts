@@ -258,13 +258,13 @@ class AppCtrl {
   showV: boolean = true;
   showImage: boolean = true;
 
-  showGrid: boolean = false;
-  showSplit: boolean = false;
+  showSuperBlockGrid: boolean = false;
+  showBlockSplit: boolean = false;
   showMotionVectors: boolean = false;
   showDering: boolean = false;
   showMode: boolean = false;
-  showInfo: boolean = false;
   showSkip: boolean = false;
+  showInfo: boolean = false;
 
   options = {
     showY: {
@@ -295,13 +295,13 @@ class AppCtrl {
       updatesImage: true,
       default: true
     },
-    showGrid: {
+    showSuperBlockGrid: {
       key: "2",
       description: "Show SB Grid",
       detail: "Shows 64x64 mode info grid.",
       default: false
     },
-    showSplit: {
+    showBlockSplit: {
       key: "3",
       description: "Show Split Grid",
       detail: "Shows block partitions.",
@@ -325,16 +325,16 @@ class AppCtrl {
       detail: "Shows prediction modes.",
       default: false
     },
-    showInfo: {
-      key: "7",
-      description: "Show Info",
-      detail: "Shows mode info details.",
-      default: false
-    },
     showSkip: {
       key: "8",
       description: "Show Skip",
       detail: "Shows skip flags.",
+      default: false
+    },
+    showInfo: {
+      key: "tab",
+      description: "Show Info",
+      detail: "Shows mode info details.",
       default: false
     }
   };
@@ -375,11 +375,15 @@ class AppCtrl {
 
   modeColor = "hsl(79, 20%, 50%)";
   mvColor = "hsl(232, 36%, 41%)";
-  skipColor = "hsla(326, 53%, 42%, 0.19)";
+  skipColor = "hsla(326, 53%, 42%, 0.2)";
   gridColor = "rgba(33,33,33,0.75)";
-  splitGridColor = "rgba(33,33,33,0.50)";
+  splitColor = "rgba(33,33,33,0.50)";
+
+  crosshairLineWidth = 3;
+  crosshairColor = "rgba(33,33,33,0.5)";
 
   gridLineWidth = 3;
+  blockSize = 8;
 
   sharingLink = "";
 
@@ -486,15 +490,17 @@ class AppCtrl {
     });
 
     var self = this;
-    function toggle(name) {
+    function toggle(name, event) {
       var option = this.options[name];
       self[name] = !self[name];
       if (option.updatesImage) {
         self.clearImage();
         self.drawImage();
       }
-      self.drawLayers();
+      self.drawMain();
+      self.showInfo && self.drawInfo();
       self.uiApply();
+      event.preventDefault();
     }
 
     for (var name in this.options) {
@@ -712,22 +718,59 @@ class AppCtrl {
     var src = Rectangle.createRectangleCenteredAtPoint(mousePosition, 64, 64);
     var dst = new Rectangle(0, 0, this.zoomSize * this.ratio, this.zoomSize * this.ratio);
 
-    this.zoomContext.mozImageSmoothingEnabled = false;
-    this.zoomContext.imageSmoothingEnabled = false;
-    this.zoomContext.clearRect(dst.x, dst.y, dst.w, dst.h);
-    this.zoomContext.drawImage(this.frameCanvas,
-      src.x, src.y, src.w, src.h,
-      dst.x, dst.y, dst.w, dst.h);
-    this.drawGridRegion(this.zoomContext, src, dst);
+    this.zoomContext.clearRect(0, 0, dst.w, dst.h);
+    if (this.showImage) {
+      this.zoomContext.mozImageSmoothingEnabled = false;
+      this.zoomContext.imageSmoothingEnabled = false;
+      this.zoomContext.clearRect(dst.x, dst.y, dst.w, dst.h);
+      this.zoomContext.drawImage(this.frameCanvas,
+        src.x, src.y, src.w, src.h,
+        dst.x, dst.y, dst.w, dst.h);
+    }
+    this.drawLayers(this.zoomContext, src, dst);
+
+    this.drawCrosshair(this.zoomContext, mousePosition, dst);
   }
 
-  drawGridRegion(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
+  drawCrosshair(ctx: CanvasRenderingContext2D, center: Vector, dst: Rectangle) {
+    ctx.save();
+    ctx.lineWidth = this.crosshairLineWidth;
+    ctx.fillStyle = this.crosshairColor;
+    ctx.strokeStyle = this.crosshairColor;
+
+    // Draw Lines
+    ctx.beginPath();
+    var lineOffset = getLineOffset(this.crosshairLineWidth);
+    ctx.translate(lineOffset, lineOffset)
+    ctx.moveTo(dst.x, dst.y + dst.h / 2);
+    ctx.lineTo(dst.x + dst.w, dst.y + dst.h / 2);
+    ctx.moveTo(dst.x + dst.w / 2, 0);
+    ctx.lineTo(dst.x + dst.w / 2, dst.y + dst.h);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Draw Dot
+    ctx.beginPath();
+    ctx.arc(dst.x + dst.w / 2, dst.y + dst.h / 2, this.crosshairLineWidth * 2, 0, Math.PI * 2, true);
+    ctx.closePath();
+
+    // Draw Text
+    var textHeight = 12 * this.ratio;
+    var textPadding = 4 * this.ratio;
+    ctx.font = textHeight + "px sans-serif";
+
+    ctx.fillText(String(center.y) + " (" + (center.y / this.blockSize | 0) + ")", dst.x + dst.w / 2 + textPadding, textHeight + textPadding);
+    ctx.fillText(String(center.x) + " (" + (center.x / this.blockSize | 0) + ")", textPadding, dst.y + dst.h / 2 + textHeight + textPadding);
+
+    ctx.restore();
+
+  }
+
+  drawSuperBlockGrid(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
     var cols = this.aom.get_mi_cols();
     var rows = this.aom.get_mi_rows();
     var scale = dst.w / src.w | 0;
     var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
-
-    var s = 8;
     ctx.save();
     ctx.lineWidth = this.gridLineWidth;
     ctx.strokeStyle = this.gridColor;
@@ -737,12 +780,12 @@ class AppCtrl {
     ctx.translate(-src.x * scale, -src.y * scale);
     ctx.beginPath();
     for (var c = 0; c <= cols; c += 8) {
-      var offset = c * s * scale;
+      var offset = c * this.blockSize * scale;
       ctx.moveTo(offset, 0);
       ctx.lineTo(offset, scaledFrameSize.h);
     }
     for (var r = 0; r <= rows; r += 8) {
-      var offset = r * s * scale;
+      var offset = r * this.blockSize * scale;
       ctx.moveTo(0, offset);
       ctx.lineTo(scaledFrameSize.w, offset);
     }
@@ -751,59 +794,11 @@ class AppCtrl {
     ctx.restore();
   }
 
-  // drawGrid2(ctx: CanvasRenderingContext2D, src: Rectangle) {
-  //   ctx.strokeStyle = this.gridColor;
-  //   ctx.beginPath();
-  //   var scale = this.scale;
-  //   var s = 8 * scale * this.ratio;
-
-  //   var lineWidth = 3;
-  //   var lineOffset = 1 / 2;
-  //   for (var c = 0; c < cols + 1; c += 8) {
-  //     var offset = lineOffset + c * s;
-  //     ctx.moveTo(offset, 0);
-  //     ctx.lineTo(offset, this.frameSize.h * scale * this.ratio);
-  //   }
-  //   for (var r = 0; r < rows + 1; r += 8) {
-  //     var offset = lineOffset + r * s;
-  //     ctx.moveTo(0, offset);
-  //     ctx.lineTo(this.frameSize.w * scale * this.ratio, offset);
-  //   }
-  //   ctx.lineWidth = lineWidth;
-  //   ctx.closePath();
-  //   ctx.globalAlpha = 0.5;
-  //   ctx.stroke();
-  // }
-
-  // drawGrid2(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, cols: number, rows: number) {
-  //   ctx.strokeStyle = this.gridColor;
-  //   ctx.beginPath();
-  //   var scale = this.scale;
-  //   var s = 8 * scale * this.ratio;
-
-  //   var lineWidth = 3;
-  //   var lineOffset = 1 / 2;
-  //   for (var c = 0; c < cols + 1; c += 8) {
-  //     var offset = lineOffset + c * s;
-  //     ctx.moveTo(offset, 0);
-  //     ctx.lineTo(offset, this.size.h * scale * this.ratio);
-  //   }
-  //   for (var r = 0; r < rows + 1; r += 8) {
-  //     var offset = lineOffset + r * s;
-  //     ctx.moveTo(0, offset);
-  //     ctx.lineTo(this.size.w * scale * this.ratio, offset);
-  //   }
-  //   ctx.lineWidth = lineWidth;
-  //   ctx.closePath();
-  //   ctx.globalAlpha = 0.5;
-  //   ctx.stroke();
-  // }
-
   drawFrame() {
     this.clearImage();
     this.drawImage();
     this.drawInfo();
-    this.drawLayers();
+    this.drawMain();
   }
 
   clearImage() {
@@ -860,36 +855,44 @@ class AppCtrl {
       var dh = this.frameSize.h * this.scale * this.ratio;
       this.displayContext.drawImage(this.frameCanvas, 0, 0, dw, dh);
 
-
     }
 
-    this.drawLayers();
+    this.drawMain();
   }
 
-  drawLayers() {
+  drawMain() {
     var ctx = this.overlayContext;
     var ratio = window.devicePixelRatio || 1;
-
     ctx.clearRect(0, 0, this.frameSize.w * this.scale * ratio, this.frameSize.h * this.scale * ratio);
 
-    this.showGrid && this.drawGrid();
-    this.showMotionVectors && this.drawMotionVectors();
-    this.showDering && this.drawDering();
-    this.showMode && this.drawMode();
-    this.showSkip && this.drawSkip();
-    this.showSplit && this.drawSplit();
+    var src = Rectangle.createRectangleFromSize(this.frameSize);
+    var dst = src.clone().multiplyScalar(this.scale * this.ratio);
+
+    this.drawLayers(ctx, src, dst);
   }
 
-  drawMode() {
-    var ctx = this.overlayContext;
+  drawLayers(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
+    this.showSuperBlockGrid && this.drawSuperBlockGrid(ctx, src, dst);
+    this.showMotionVectors && this.drawMotionVectors(ctx, src, dst);
+    this.showDering && this.drawDering(ctx, src, dst);
+    this.showMode && this.drawMode(ctx, src, dst);
+    this.showSkip && this.drawSkip(ctx, src, dst);
+    this.showBlockSplit && this.drawBlockSplit(ctx, src, dst);
+  }
+
+  drawMode(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
     var cols = this.aom.get_mi_cols();
     var rows = this.aom.get_mi_rows();
-    var s = this.scale * this.ratio;
-    var lineWidth = 3;
-    var lineOffset = 0.5;
-    ctx.lineWidth = lineWidth;
+    var scale = dst.w / src.w;
+    var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
+
+    ctx.save();
+    ctx.lineWidth = this.gridLineWidth;
     ctx.strokeStyle = this.modeColor;
-    ctx.globalAlpha = 0.5;
+    ctx.globalAlpha = 1;
+    var lineOffset = getLineOffset(this.gridLineWidth);
+    ctx.translate(-src.x * scale, -src.y * scale);
+
     function line(x, y, dx, dy) {
       ctx.beginPath();
       ctx.moveTo(x, y);
@@ -933,38 +936,32 @@ class AppCtrl {
       }
     }
 
+    var S = scale * this.blockSize;
+
     for (var c = 0; c < cols; c++) {
       for (var r = 0; r < rows; r++) {
         var i = this.aom.get_mi_mode(c, r);
-        mode(i, c * 8 * s, r * 8 * s, 8 * s, 8 * s);
+        mode(i, c * S, r * S, S, S);
       }
     }
 
+    ctx.restore();
   }
 
-  drawSkip() {
-    var ctx = this.overlayContext;
+  drawBlockSplit(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
     var cols = this.aom.get_mi_cols();
     var rows = this.aom.get_mi_rows();
-    var s = this.scale * this.ratio;
-    ctx.fillStyle = this.skipColor;
-    for (var c = 0; c < cols; c++) {
-      for (var r = 0; r < rows; r++) {
-        var i = this.aom.get_mi_skip(c, r);
-        if (i) {
-          ctx.fillRect(c * 8 * s, r * 8 * s, 8 * s, 8 * s);
-        }
-      }
-    }
-  }
+    var scale = dst.w / src.w;
+    var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
 
-  drawSplit() {
-    var ctx = this.overlayContext;
-    var cols = this.aom.get_mi_cols();
-    var rows = this.aom.get_mi_rows();
-    ctx.strokeStyle = this.splitGridColor;
-    var s = this.scale * this.ratio;
+    ctx.save();
+    ctx.lineWidth = this.gridLineWidth;
+    ctx.strokeStyle = this.splitColor;
     ctx.globalAlpha = 1;
+    var lineOffset = getLineOffset(this.gridLineWidth);
+    ctx.translate(lineOffset, lineOffset);
+    ctx.translate(-src.x * scale, -src.y * scale);
+    ctx.beginPath();
 
     var sizes = [
       [2, 2],
@@ -983,13 +980,11 @@ class AppCtrl {
     ];
 
     var lineWidth = 1;
-    var lineOffset = lineWidth / 2;
     ctx.lineWidth = lineWidth;
 
     function split(x, y, dx, dy) {
       ctx.beginPath();
       ctx.save();
-      ctx.translate(lineOffset, lineOffset);
       ctx.moveTo(x, y);
       ctx.lineTo(x + dx, y);
       ctx.moveTo(x, y);
@@ -999,6 +994,7 @@ class AppCtrl {
       ctx.stroke();
     }
 
+    var S = scale * this.blockSize;
     // Draw block sizes above 8x8.
     for (var i = 3; i < sizes.length; i++) {
       var dc = 1 << (sizes[i][0] - 3);
@@ -1007,7 +1003,7 @@ class AppCtrl {
         for (var r = 0; r < rows; r += dr) {
           var t = this.aom.get_mi_block_size(c, r);
           if (t == i) {
-            split(c * s * 8, r * s * 8, dc * s * 8, dr * s * 8);
+            split(c * S, r * S, dc * S, dr * S);
           }
         }
       }
@@ -1017,56 +1013,109 @@ class AppCtrl {
     for (var c = 0; c < cols; c ++) {
       for (var r = 0; r < rows; r ++) {
         var t = this.aom.get_mi_block_size(c, r);
-        var x = c * s * 8;
-        var y = r * s * 8;
+        var x = c * S;
+        var y = r * S;
         switch (t) {
           case 0:
-            var dx = 4 * s;
-            var dy = 4 * s;
+            var dx = S >> 1;
+            var dy = S >> 1;
             split(x,      y,      dx, dy);
             split(x + dx, y,      dx, dy);
             split(x,      y + dy, dx, dy);
             split(x + dx, y + dy, dx, dy);
             break;
           case 1:
-            var dx = 4 * s;
-            var dy = 8 * s;
+            var dx = S >> 1;
+            var dy = S;
             split(x,      y, dx, dy);
             split(x + dx, y, dx, dy);
             break;
           case 2:
-            var dx = 8 * s;
-            var dy = 4 * s;
+            var dx = S;
+            var dy = S >> 1;
             split(x, y,      dx, dy);
             split(x, y + dy, dx, dy);
             break;
         }
       }
     }
+
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
   }
 
-  drawDering() {
-    var ctx = this.overlayContext;
+  drawFillBlock(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle, setFillStyle: (c: number, r: number) => boolean) {
     var cols = this.aom.get_mi_cols();
     var rows = this.aom.get_mi_rows();
-    ctx.strokeStyle = "rgba(33,33,33,0.75)";
+    var scale = dst.w / src.w;
+    var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
+    ctx.save();
+    ctx.globalAlpha = 0.75;
+    ctx.translate(-src.x * scale, -src.y * scale);
+    var S = scale * this.blockSize;
+    for (var c = 0; c < cols; c++) {
+      for (var r = 0; r < rows; r++) {
+        if (setFillStyle(c, r)) {
+          ctx.fillRect(c * S, r * S, S, S);
+        }
+      }
+    }
+    ctx.restore();
+  }
 
-    var s = this.scale * this.ratio;
-    ctx.globalAlpha = 1;
+  drawDering(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
+    this.drawFillBlock(ctx, src, dst, (c, r) => {
+      var i = this.aom.get_dering_gain(c, r);
+      if (i == 0) return false;
+      ctx.fillStyle = "rgba(33,33,33," + (i / 4) + ")";
+      return true;
+    });
+  }
+
+  drawSkip(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
+    this.drawFillBlock(ctx, src, dst, (c, r) => {
+      var i = this.aom.get_mi_skip(c, r);
+      if (i == 0) return false;
+      ctx.fillStyle = this.skipColor;
+      return true;
+    });
+  }
+
+  drawMotionVectors(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
+    var cols = this.aom.get_mi_cols();
+    var rows = this.aom.get_mi_rows();
+    var scale = dst.w / src.w;
+    var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
+
+    ctx.save();
+    ctx.globalAlpha = 0.75;
+    ctx.translate(-src.x * scale, -src.y * scale);
+    var S = scale * this.blockSize;
+
+    var gradient = tinygradient([
+      {color: tinycolor(this.mvColor).brighten(50), pos: 0},
+      {color: tinycolor(this.mvColor), pos: 1}
+    ]);
+
+    var colorRange = gradient.rgb(32);
 
     for (var c = 0; c < cols; c++) {
       for (var r = 0; r < rows; r++) {
-        var i = this.aom.get_dering_gain(c, r);
-        ctx.fillStyle = "rgba(33,33,33," + (i / 4) + ")";
-        ctx.fillRect(c * 8 * s, r * 8 * s, 8 * s, 8 * s);
+        var i = this.aom.get_mi_mv(c, r);
+        var y = (i >> 16);
+        var x = (((i & 0xFFFF) << 16) >> 16);
+        if (x == 0 && y == 0) {
+          continue;
+        }
+        var v = new Vector(x, y);
+        v.clampLength(0, 31);
+        var l = v.length() | 0;
+        ctx.fillStyle = colorRange[l | 0];
+        ctx.fillRect(c * S, r * S, S, S);
       }
     }
-  }
-
-  drawGrid() {
-    var src = Rectangle.createRectangleFromSize(this.frameSize);
-    var dst = src.clone().multiplyScalar(this.scale * this.ratio);
-    this.drawGridRegion(this.overlayContext, src, dst);
+    ctx.restore();
   }
 
   drawVector(a: Vector, b: Vector) {
@@ -1145,7 +1194,7 @@ class AppCtrl {
     ctx.restore();
   }
 
-  drawMotionVectors() {
+  drawMotionVectors2() {
     var ctx = this.overlayContext;
     var cols = this.aom.get_mi_cols();
     var rows = this.aom.get_mi_rows();

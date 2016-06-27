@@ -212,60 +212,39 @@ int get_mi_cols() {
   return cm->mi_cols;
 }
 
-EMSCRIPTEN_KEEPALIVE
-int get_mi_mv(int c, int r, int i) {
-  AV1AnalyzerMI *mi =
-    &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
-  return mi->mv[i].row << 16 | mi->mv[i].col;
-}
+typedef enum {
+  GET_MI_MV,
+  GET_MI_MODE,
+  GET_MI_SKIP,
+  GET_MI_REFERENCE_FRAME,
+  GET_MI_BLOCK_SIZE,
+  GET_MI_TRANSFORM_TYPE,
+  GET_MI_TRANSFORM_SIZE,
+  GET_MI_DERING_GAIN
+} GetMIProperty;
 
 EMSCRIPTEN_KEEPALIVE
-int get_mi_mode(int c, int r) {
+int get_mi_property(GetMIProperty v, int c, int r, int i) {
   AV1AnalyzerMI *mi =
     &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
-  return mi->mode;
-}
-
-EMSCRIPTEN_KEEPALIVE
-int get_mi_skip(int c, int r) {
-  AV1AnalyzerMI *mi =
-    &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
-  return mi->skip;
-}
-
-EMSCRIPTEN_KEEPALIVE
-int get_mi_reference_frame(int c, int r, int i) {
-  AV1AnalyzerMI *mi =
-    &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
-  return mi->reference_frame[i];
-}
-
-EMSCRIPTEN_KEEPALIVE
-int get_mi_block_size(int c, int r) {
-  AV1AnalyzerMI *mi =
-    &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
-  return mi->block_size;
-}
-
-EMSCRIPTEN_KEEPALIVE
-int get_mi_transform_type(int c, int r) {
-  AV1AnalyzerMI *mi =
-    &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
-  return mi->transform_type;
-}
-
-EMSCRIPTEN_KEEPALIVE
-int get_mi_transform_size(int c, int r) {
-  AV1AnalyzerMI *mi =
-    &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
-  return mi->transform_size;
-}
-
-EMSCRIPTEN_KEEPALIVE
-int get_dering_gain(int c, int r) {
-  AV1AnalyzerMI *mi =
-    &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
-  return mi->dering_gain;
+  switch (v) {
+    case GET_MI_MV:
+      return mi->mv[i].row << 16 | mi->mv[i].col;
+    case GET_MI_MODE:
+      return mi->mode;
+    case GET_MI_SKIP:
+      return mi->skip;
+    case GET_MI_REFERENCE_FRAME:
+      return mi->reference_frame[i];
+    case GET_MI_BLOCK_SIZE:
+      return mi->block_size;
+    case GET_MI_TRANSFORM_TYPE:
+      return mi->transform_type;
+    case GET_MI_TRANSFORM_SIZE:
+      return mi->transform_size;
+    case GET_MI_DERING_GAIN:
+      return mi->dering_gain;
+  }
 }
 
 EMSCRIPTEN_KEEPALIVE

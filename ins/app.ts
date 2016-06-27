@@ -64,6 +64,17 @@ enum AOMAnalyzerBlockSize {
   BLOCK_64X64 = 12
 }
 
+enum MIProperty {
+  GET_MI_MV,
+  GET_MI_MODE,
+  GET_MI_SKIP,
+  GET_MI_REFERENCE_FRAME,
+  GET_MI_BLOCK_SIZE,
+  GET_MI_TRANSFORM_TYPE,
+  GET_MI_TRANSFORM_SIZE,
+  GET_MI_DERING_GAIN
+}
+
 interface AOMInternal {
   _read_frame (): number;
   _get_plane (pli: number): number;
@@ -72,18 +83,13 @@ interface AOMInternal {
   _get_plane_height (pli: number): number;
   _get_mi_rows(): number;
   _get_mi_cols(): number;
-  _get_mi_mv(c: number, r: number, i: number): number;
-  _get_mi_mode(c: number, r: number): AOMAnalyzerPredictionMode;
-  _get_mi_skip(c: number, r: number): number;
-  _get_mi_block_size(c: number, r: number): AOMAnalyzerBlockSize;
-  _get_dering_gain(c: number, r: number): number;
   _get_frame_count(): number;
   _get_frame_width(): number;
   _get_frame_height(): number;
-  _get_mi_reference_frame(c: number, r: number, i: number): number;
-  _get_mi_transform_type(c: number, r: number): number;
-  _get_mi_transform_size(c: number, r: number): number;
   _open_file(): number;
+
+  _get_mi_property(p: MIProperty, c: number, r: number, i: number): number;
+
   HEAPU8: Uint8Array;
 }
 
@@ -117,29 +123,8 @@ class AOM {
   get_mi_cols(): number {
     return this.native._get_mi_cols();
   }
-  get_mi_mv(c: number, r: number, i: number): number {
-    return this.native._get_mi_mv(c, r, i);
-  }
-  get_mi_reference_frame(c: number, r: number, i: number): number {
-    return this.native._get_mi_reference_frame(c, r, i);
-  }
-  get_mi_transform_type(c: number, r: number): number {
-    return this.native._get_mi_transform_type(c, r);
-  }
-  get_mi_transform_size(c: number, r: number): number {
-    return this.native._get_mi_transform_size(c, r);
-  }
-  get_mi_mode(c: number, r: number): AOMAnalyzerPredictionMode {
-    return this.native._get_mi_mode(c, r);
-  }
-  get_mi_skip(c: number, r: number): number {
-    return this.native._get_mi_skip(c, r);
-  }
-  get_mi_block_size(c: number, r: number): AOMAnalyzerBlockSize {
-    return this.native._get_mi_block_size(c, r);
-  }
-  get_dering_gain(c: number, r: number): number {
-    return this.native._get_dering_gain(c, r);
+  get_mi_property(p: MIProperty, c: number, r: number, i: number = 0) {
+    return this.native._get_mi_property(p, c, r, i);
   }
   get_frame_count(): number {
     return this.native._get_frame_count();
@@ -279,7 +264,7 @@ class AppCtrl {
   showDering: boolean = false;
   showMode: boolean = false;
   showSkip: boolean = false;
-  showInfo: boolean = false;
+  showInfo: boolean = true;
 
   options = {
     showY: {
@@ -350,7 +335,7 @@ class AppCtrl {
       key: "tab",
       description: "Show Info",
       detail: "Shows mode info details.",
-      default: false
+      default: true
     },
     zoomLock: {
       key: "z",
@@ -421,13 +406,15 @@ class AppCtrl {
   modeColor = "hsl(79, 20%, 50%)";
   mvColor = "hsl(232, 36%, 41%)";
   skipColor = "hsla(326, 53%, 42%, 0.2)";
-  gridColor = "rgba(33,33,33,0.75)";
-  splitColor = "rgba(33,33,33,0.50)";
+  gridColor = "rgba(55,55,55,1)";
+  splitColor = "rgba(33,33,33,1)";
 
-  crosshairLineWidth = 3;
+  crosshairLineWidth = 2;
   crosshairColor = "rgba(33,33,33,0.5)";
 
   gridLineWidth = 3;
+  splitLineWidth = 1;
+  modeLineWidth = 2;
   blockSize = 8;
 
   zoomLock = false;
@@ -779,9 +766,11 @@ class AppCtrl {
 
   drawCrosshair(ctx: CanvasRenderingContext2D, center: Vector, dst: Rectangle) {
     ctx.save();
+    ctx.globalCompositeOperation = "difference";
     ctx.lineWidth = this.crosshairLineWidth;
     ctx.fillStyle = this.crosshairColor;
-    ctx.strokeStyle = this.crosshairColor;
+    ctx.fillStyle = "#FFFFFF";
+    ctx.strokeStyle = "#FFFFFF";
 
     // Draw Lines
     ctx.beginPath();
@@ -801,12 +790,23 @@ class AppCtrl {
     ctx.fill();
 
     // Draw Text
+    ctx.fillStyle = "#FFFFFF";
+
+    ctx.lineWidth = 4;
     var textHeight = 12 * this.ratio;
     var textPadding = 4 * this.ratio;
-    ctx.font = textHeight + "px sans-serif";
+    ctx.font = "bold " + textHeight + "px sans-serif";
 
-    ctx.fillText(String(center.y) + " (" + (center.y / this.blockSize | 0) + ")", dst.x + dst.w / 2 + textPadding, textHeight + textPadding);
-    ctx.fillText(String(center.x) + " (" + (center.x / this.blockSize | 0) + ")", textPadding, dst.y + dst.h / 2 + textHeight + textPadding);
+    var x, y, text;
+    x = dst.x + dst.w / 2 + textPadding;
+    y = textHeight + textPadding;
+    text = String(center.y) + " (" + (center.y / this.blockSize | 0) + ")";
+    ctx.fillText(text, x, y);
+
+    x = textPadding;
+    y = dst.y + dst.h / 2 + textHeight + textPadding;
+    text = String(center.x) + " (" + (center.x / this.blockSize | 0) + ")";
+    ctx.fillText(text, x, y);
 
     ctx.restore();
 
@@ -821,6 +821,7 @@ class AppCtrl {
     ctx.lineWidth = this.gridLineWidth;
     ctx.strokeStyle = this.gridColor;
     ctx.globalAlpha = 1;
+
     var lineOffset = getLineOffset(this.gridLineWidth);
     ctx.translate(lineOffset, lineOffset);
     ctx.translate(-src.x * scale, -src.y * scale);
@@ -918,12 +919,12 @@ class AppCtrl {
   }
 
   drawLayers(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
-    this.showSuperBlockGrid && this.drawSuperBlockGrid(ctx, src, dst);
     this.showMotionVectors && this.drawMotionVectors(ctx, src, dst);
     this.showDering && this.drawDering(ctx, src, dst);
     this.showMode && this.drawMode(ctx, src, dst);
     this.showSkip && this.drawSkip(ctx, src, dst);
     this.showBlockSplit && this.drawBlockSplit(ctx, src, dst);
+    this.showSuperBlockGrid && this.drawSuperBlockGrid(ctx, src, dst);
   }
 
   drawMode(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
@@ -933,10 +934,10 @@ class AppCtrl {
     var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
 
     ctx.save();
-    ctx.lineWidth = this.gridLineWidth;
+    ctx.lineWidth = this.modeLineWidth;
     ctx.strokeStyle = this.modeColor;
     ctx.globalAlpha = 1;
-    var lineOffset = getLineOffset(this.gridLineWidth);
+    var lineOffset = getLineOffset(this.modeLineWidth);
     ctx.translate(-src.x * scale, -src.y * scale);
 
     function line(x, y, dx, dy) {
@@ -986,7 +987,7 @@ class AppCtrl {
 
     for (var c = 0; c < cols; c++) {
       for (var r = 0; r < rows; r++) {
-        var i = this.aom.get_mi_mode(c, r);
+        var i = this.aom.get_mi_property(MIProperty.GET_MI_MODE, c, r);
         mode(i, c * S, r * S, S, S);
       }
     }
@@ -1001,10 +1002,10 @@ class AppCtrl {
     var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
 
     ctx.save();
-    ctx.lineWidth = this.gridLineWidth;
+    ctx.lineWidth = this.splitLineWidth;
     ctx.strokeStyle = this.splitColor;
     ctx.globalAlpha = 1;
-    var lineOffset = getLineOffset(this.gridLineWidth);
+    var lineOffset = getLineOffset(this.splitLineWidth);
     ctx.translate(lineOffset, lineOffset);
     ctx.translate(-src.x * scale, -src.y * scale);
     ctx.beginPath();
@@ -1047,7 +1048,7 @@ class AppCtrl {
       var dr = 1 << (sizes[i][1] - 3);
       for (var c = 0; c < cols; c += dc) {
         for (var r = 0; r < rows; r += dr) {
-          var t = this.aom.get_mi_block_size(c, r);
+          var t = this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, c, r);
           if (t == i) {
             split(c * S, r * S, dc * S, dr * S);
           }
@@ -1058,7 +1059,7 @@ class AppCtrl {
     // Draw block sizes below 8x8.
     for (var c = 0; c < cols; c ++) {
       for (var r = 0; r < rows; r ++) {
-        var t = this.aom.get_mi_block_size(c, r);
+        var t = this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, c, r);
         var x = c * S;
         var y = r * S;
         switch (t) {
@@ -1112,7 +1113,7 @@ class AppCtrl {
 
   drawDering(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
     this.drawFillBlock(ctx, src, dst, (c, r) => {
-      var i = this.aom.get_dering_gain(c, r);
+      var i = this.aom.get_mi_property(MIProperty.GET_MI_DERING_GAIN, c, r);
       if (i == 0) return false;
       ctx.fillStyle = "rgba(33,33,33," + (i / 4) + ")";
       return true;
@@ -1121,7 +1122,7 @@ class AppCtrl {
 
   drawSkip(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
     this.drawFillBlock(ctx, src, dst, (c, r) => {
-      var i = this.aom.get_mi_skip(c, r);
+      var i = this.aom.get_mi_property(MIProperty.GET_MI_SKIP, c, r);
       if (i == 0) return false;
       ctx.fillStyle = this.skipColor;
       return true;
@@ -1129,7 +1130,7 @@ class AppCtrl {
   }
 
   getMotionVector(c: number, r: number, i: number): Vector {
-    var i = this.aom.get_mi_mv(c, r, i);
+    var i = this.aom.get_mi_property(MIProperty.GET_MI_MV, c, r, i);
     var y = (i >> 16);
     var x = (((i & 0xFFFF) << 16) >> 16);
     return new Vector(x, y);
@@ -1140,21 +1141,21 @@ class AppCtrl {
     var mi = this.getMI();
     switch (name) {
       case "blockSize":
-        return this.blockSizeNames[this.aom.get_mi_block_size(mi.x, mi.y)];
+        return this.blockSizeNames[this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, mi.x, mi.y)];
       case "predictionMode":
-        return this.predictionModeNames[this.aom.get_mi_mode(mi.x, mi.y)];
+        return this.predictionModeNames[this.aom.get_mi_property(MIProperty.GET_MI_MODE, mi.x, mi.y)];
       case "deringGain":
-        return String(this.aom.get_dering_gain(mi.x, mi.y));
+        return String(this.aom.get_mi_property(MIProperty.GET_MI_DERING_GAIN, mi.x, mi.y));
       case "motionVector":
         return this.getMotionVector(mi.x, mi.y, 0).toString() + " " +
                this.getMotionVector(mi.x, mi.y, 1).toString();
       case "referenceFrames":
-        return this.aom.get_mi_reference_frame(mi.x, mi.y, 0) + ", " +
-               this.aom.get_mi_reference_frame(mi.x, mi.y, 1);
+        return this.aom.get_mi_property(MIProperty.GET_MI_REFERENCE_FRAME, mi.x, mi.y, 0) + ", " +
+               this.aom.get_mi_property(MIProperty.GET_MI_REFERENCE_FRAME, mi.x, mi.y, 1);
       case "transformType":
-        return this.aom.get_mi_transform_type(mi.x, mi.y);
+        return this.aom.get_mi_property(MIProperty.GET_MI_TRANSFORM_TYPE, mi.x, mi.y);
       case "transformSize":
-        return this.aom.get_mi_transform_size(mi.x, mi.y);
+        return this.aom.get_mi_property(MIProperty.GET_MI_TRANSFORM_SIZE, mi.x, mi.y);
     }
     return "?";
   }
@@ -1179,13 +1180,7 @@ class AppCtrl {
 
     for (var c = 0; c < cols; c++) {
       for (var r = 0; r < rows; r++) {
-        var i = this.aom.get_mi_mv(c, r, 0);
-        var y = (i >> 16);
-        var x = (((i & 0xFFFF) << 16) >> 16);
-        if (x == 0 && y == 0) {
-          continue;
-        }
-        var v = new Vector(x, y);
+        var v = this.getMotionVector(c, r, 0);
         v.clampLength(0, 31);
         var l = v.length() | 0;
         ctx.fillStyle = colorRange[l | 0];
@@ -1288,13 +1283,7 @@ class AppCtrl {
 
     for (var c = 0; c < cols; c++) {
       for (var r = 0; r < rows; r++) {
-        var i = this.aom.get_mi_mv(c, r, 0);
-        var y = (i >> 16);
-        var x = (((i & 0xFFFF) << 16) >> 16);
-        if (x == 0 && y == 0) {
-          continue;
-        }
-        var v = new Vector(x, y);
+        var v = this.getMotionVector(c, r, 0);
         v.clampLength(0, 31);
         var l = v.length() | 0;
         ctx.fillStyle = colorRange[l | 0];

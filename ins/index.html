@@ -31,9 +31,20 @@
       font-size: 14px;
     }
 
-    .key {
+    .keyShortcut {
       font-family: monospace;
       color: blueviolet;
+      font-weight: bold;
+    }
+
+    .key {
+      display: inline-block;
+      width: 128px;
+    }
+
+    .value {
+      font-family: monospace;
+      color: dodgerblue;
       font-weight: bold;
     }
 
@@ -177,7 +188,7 @@
           <h1 class="title">Toggle Layers</h1>
           <div ng-repeat="(name, option) in vm.options" style="padding: 0px; padding-left: 8px;">
             <md-checkbox ng-model="vm[name]" ng-change="vm.uiChange()">
-              {{option.description}} [<span class="key">{{option.key}}</span>]
+              {{option.description}} [<span class="keyShortcut">{{option.key}}</span>]
               <md-tooltip md-direction="right">
                 {{option.detail}}
               </md-tooltip>
@@ -192,7 +203,7 @@
 
           <div>
             <div class="label">Split Grid Color</div>
-            <color-picker color-picker-pos="'top left'" color-picker-swatch-only="true" ng-model="vm.splitGridColor" color-picker-on-change="vm.uiChange()"></color-picker>
+            <color-picker color-picker-pos="'top left'" color-picker-swatch-only="true" ng-model="vm.splitColor" color-picker-on-change="vm.uiChange()"></color-picker>
           </div>
 
           <div>
@@ -226,12 +237,21 @@
       </md-content>
       <md-content ng-hide="!vm.showInfo" style="background-color: #F5F5F5; width: 512px;">
         <canvas id="zoom" oncontextmenu="event.preventDefault()" style="left: 0; bottom: 0; z-index: 1000; image-rendering: pixelated;"
-          width=0 height=0></canvas>
-        <br>
-        <md-content layout-padding>
-          Prediction Mode: {{ vm.uiMIMode() }}<br> Dering Gain: {{ vm.uiMIDeringGain() }}<br> Block Size: {{ vm.uiMIBlockSize() }}
-          <br>
-        </md-content>
+              width=0 height=0></canvas>
+        <md-tabs md-dynamic-height md-border-bottom>
+          <md-tab label="Block Info">
+            <md-content class="md-padding">
+              <div ng-repeat="(name, info) in vm.blockInfo" style="padding: 0px; padding-left: 0px;">
+                <span class="key">{{info. description}}:</span> <span class="value">{{ vm.uiBlockInfo(name) }}</span>
+              </div>
+            </md-content>
+          </md-tab>
+          <md-tab label="Header">
+            <md-content class="md-padding">
+              NYI
+            </md-content>
+          </md-tab>
+        </md-tabs>
       </md-content>
     </div>
   </div>

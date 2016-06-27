@@ -213,10 +213,10 @@ int get_mi_cols() {
 }
 
 EMSCRIPTEN_KEEPALIVE
-int get_mi_mv(int c, int r) {
+int get_mi_mv(int c, int r, int i) {
   AV1AnalyzerMI *mi =
     &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
-  return mi->mv.row << 16 | mi->mv.col;
+  return mi->mv[i].row << 16 | mi->mv[i].col;
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -234,10 +234,31 @@ int get_mi_skip(int c, int r) {
 }
 
 EMSCRIPTEN_KEEPALIVE
+int get_mi_reference_frame(int c, int r, int i) {
+  AV1AnalyzerMI *mi =
+    &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
+  return mi->reference_frame[i];
+}
+
+EMSCRIPTEN_KEEPALIVE
 int get_mi_block_size(int c, int r) {
   AV1AnalyzerMI *mi =
     &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
   return mi->block_size;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int get_mi_transform_type(int c, int r) {
+  AV1AnalyzerMI *mi =
+    &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
+  return mi->transform_type;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int get_mi_transform_size(int c, int r) {
+  AV1AnalyzerMI *mi =
+    &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
+  return mi->transform_size;
 }
 
 EMSCRIPTEN_KEEPALIVE

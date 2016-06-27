@@ -72,7 +72,7 @@ interface AOMInternal {
   _get_plane_height (pli: number): number;
   _get_mi_rows(): number;
   _get_mi_cols(): number;
-  _get_mi_mv(c: number, r: number): number;
+  _get_mi_mv(c: number, r: number, i: number): number;
   _get_mi_mode(c: number, r: number): AOMAnalyzerPredictionMode;
   _get_mi_skip(c: number, r: number): number;
   _get_mi_block_size(c: number, r: number): AOMAnalyzerBlockSize;
@@ -80,6 +80,9 @@ interface AOMInternal {
   _get_frame_count(): number;
   _get_frame_width(): number;
   _get_frame_height(): number;
+  _get_mi_reference_frame(c: number, r: number, i: number): number;
+  _get_mi_transform_type(c: number, r: number): number;
+  _get_mi_transform_size(c: number, r: number): number;
   _open_file(): number;
   HEAPU8: Uint8Array;
 }
@@ -114,8 +117,17 @@ class AOM {
   get_mi_cols(): number {
     return this.native._get_mi_cols();
   }
-  get_mi_mv(c: number, r: number): number {
-    return this.native._get_mi_mv(c, r);
+  get_mi_mv(c: number, r: number, i: number): number {
+    return this.native._get_mi_mv(c, r, i);
+  }
+  get_mi_reference_frame(c: number, r: number, i: number): number {
+    return this.native._get_mi_reference_frame(c, r, i);
+  }
+  get_mi_transform_type(c: number, r: number): number {
+    return this.native._get_mi_transform_type(c, r);
+  }
+  get_mi_transform_size(c: number, r: number): number {
+    return this.native._get_mi_transform_size(c, r);
   }
   get_mi_mode(c: number, r: number): AOMAnalyzerPredictionMode {
     return this.native._get_mi_mode(c, r);
@@ -244,6 +256,9 @@ class Vector {
 		this.multiplyScalar(Math.max(min, Math.min(max, length)) / length);
 		return this;
 	}
+  toString(): string {
+    return this.x + "," + this.y;
+  }
 }
 
 class AppCtrl {
@@ -336,6 +351,36 @@ class AppCtrl {
       description: "Show Info",
       detail: "Shows mode info details.",
       default: false
+    },
+    zoomLock: {
+      key: "z",
+      description: "Zoom Lock",
+      detail: "Locks zoom at the current mouse position.",
+      default: false
+    }
+  };
+
+  blockInfo = {
+    blockSize: {
+      description: "Block Size"
+    },
+    predictionMode: {
+      description: "Prediction Mode"
+    },
+    deringGain: {
+      description: "Dering Gain"
+    },
+    motionVector: {
+      description: "Motion Vectors"
+    },
+    referenceFrames: {
+      description: "Reference Frames"
+    },
+    transformType: {
+      description: "Transform Type"
+    },
+    transformSize: {
+      description: "Transform Size"
     }
   };
 
@@ -385,6 +430,8 @@ class AppCtrl {
   gridLineWidth = 3;
   blockSize = 8;
 
+  zoomLock = false;
+
   sharingLink = "";
 
   $scope: any;
@@ -428,6 +475,7 @@ class AppCtrl {
     this.zoomContext.imageSmoothingEnabled = false;
 
     this.overlayCanvas.addEventListener("mousemove", this.onMouseMove.bind(this));
+    this.overlayCanvas.addEventListener("mousedown", this.onMouseDown.bind(this));
 
     this.frameCanvas = document.createElement("canvas");
     this.frameContext = this.frameCanvas.getContext("2d");
@@ -511,7 +559,20 @@ class AppCtrl {
     }
   }
 
+  onMouseDown(event: MouseEvent) {
+    this.handleMouseEvent(event);
+    this.zoomLock = !this.zoomLock;
+    this.uiApply();
+  }
+
   onMouseMove(event: MouseEvent) {
+    this.handleMouseEvent(event);
+  }
+
+  handleMouseEvent(event: MouseEvent) {
+    if (this.zoomLock) {
+      return;
+    }
     function getMousePosition(canvas: HTMLCanvasElement, event: MouseEvent) {
       var rect = canvas.getBoundingClientRect();
       return new Vector(
@@ -519,7 +580,6 @@ class AppCtrl {
         event.clientY - rect.top
       );
     }
-    // console.info(getMousePosition(this.overlayCanvas, event));
     this.mousePosition = getMousePosition(this.overlayCanvas, event);
     this.drawInfo();
     this.uiApply();
@@ -530,21 +590,6 @@ class AppCtrl {
     var x = v.x / this.scale | 0;
     var y = v.y / this.scale | 0;
     return new Vector(x / 8 | 0, y / 8 | 0);
-  }
-
-  uiMIMode() {
-    var mi = this.getMI();
-    return this.predictionModeNames[this.aom.get_mi_mode(mi.x, mi.y)];
-  }
-
-  uiMIDeringGain() {
-    var mi = this.getMI();
-    return this.aom.get_dering_gain(mi.x, mi.y);
-  }
-
-  uiMIBlockSize() {
-    var mi = this.getMI();
-    return this.blockSizeNames[this.aom.get_mi_block_size(mi.x, mi.y)];
   }
 
   openFileBytes(buffer: Uint8Array) {
@@ -753,6 +798,7 @@ class AppCtrl {
     ctx.beginPath();
     ctx.arc(dst.x + dst.w / 2, dst.y + dst.h / 2, this.crosshairLineWidth * 2, 0, Math.PI * 2, true);
     ctx.closePath();
+    ctx.fill();
 
     // Draw Text
     var textHeight = 12 * this.ratio;
@@ -1082,6 +1128,37 @@ class AppCtrl {
     });
   }
 
+  getMotionVector(c: number, r: number, i: number): Vector {
+    var i = this.aom.get_mi_mv(c, r, i);
+    var y = (i >> 16);
+    var x = (((i & 0xFFFF) << 16) >> 16);
+    return new Vector(x, y);
+  }
+
+  uiBlockInfo(name: string) {
+
+    var mi = this.getMI();
+    switch (name) {
+      case "blockSize":
+        return this.blockSizeNames[this.aom.get_mi_block_size(mi.x, mi.y)];
+      case "predictionMode":
+        return this.predictionModeNames[this.aom.get_mi_mode(mi.x, mi.y)];
+      case "deringGain":
+        return String(this.aom.get_dering_gain(mi.x, mi.y));
+      case "motionVector":
+        return this.getMotionVector(mi.x, mi.y, 0).toString() + " " +
+               this.getMotionVector(mi.x, mi.y, 1).toString();
+      case "referenceFrames":
+        return this.aom.get_mi_reference_frame(mi.x, mi.y, 0) + ", " +
+               this.aom.get_mi_reference_frame(mi.x, mi.y, 1);
+      case "transformType":
+        return this.aom.get_mi_transform_type(mi.x, mi.y);
+      case "transformSize":
+        return this.aom.get_mi_transform_size(mi.x, mi.y);
+    }
+    return "?";
+  }
+
   drawMotionVectors(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
     var cols = this.aom.get_mi_cols();
     var rows = this.aom.get_mi_rows();
@@ -1102,7 +1179,7 @@ class AppCtrl {
 
     for (var c = 0; c < cols; c++) {
       for (var r = 0; r < rows; r++) {
-        var i = this.aom.get_mi_mv(c, r);
+        var i = this.aom.get_mi_mv(c, r, 0);
         var y = (i >> 16);
         var x = (((i & 0xFFFF) << 16) >> 16);
         if (x == 0 && y == 0) {
@@ -1211,7 +1288,7 @@ class AppCtrl {
 
     for (var c = 0; c < cols; c++) {
       for (var r = 0; r < rows; r++) {
-        var i = this.aom.get_mi_mv(c, r);
+        var i = this.aom.get_mi_mv(c, r, 0);
         var y = (i >> 16);
         var x = (((i & 0xFFFF) << 16) >> 16);
         if (x == 0 && y == 0) {

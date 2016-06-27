@@ -35,9 +35,14 @@ aom_codec_err_t av1_analyze_frame(struct AV1Decoder *pbi) {
         const MB_MODE_INFO *mbmi =
           &cm->mi_grid_visible[r * cm->mi_stride + c]->mbmi;
         AV1AnalyzerMI *mi = &mi_grid.buffer[r * mi_cols + c];
-        // MVs.
-        mi->mv.col = mbmi->mv[0].as_mv.col;
-        mi->mv.row = mbmi->mv[0].as_mv.row;
+        // MVs
+        mi->mv[0].col = mbmi->mv[0].as_mv.col;
+        mi->mv[0].row = mbmi->mv[0].as_mv.row;
+        mi->mv[1].col = mbmi->mv[1].as_mv.col;
+        mi->mv[1].row = mbmi->mv[1].as_mv.row;
+        // Reference Frames
+        mi->reference_frame[0] = mbmi->ref_frame[0];
+        mi->reference_frame[1] = mbmi->ref_frame[1];
         // Prediction Mode
         mi->mode = mbmi->mode;
         // Deringing Gain
@@ -46,6 +51,11 @@ aom_codec_err_t av1_analyze_frame(struct AV1Decoder *pbi) {
         mi->block_size = mbmi->sb_type;
         // Skip flag
         mi->skip = mbmi->skip;
+        // Filters
+        mi->filter = mbmi->interp_filter;
+        // Transform
+        mi->transform_type = mbmi->tx_type;
+        mi->transform_size = mbmi->tx_size;
       }
     }
   }

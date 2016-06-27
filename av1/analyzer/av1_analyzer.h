@@ -40,6 +40,11 @@ struct AV1Decoder;
 //} AV1AnalyzerPredictionMode;
 
 typedef uint8_t AV1AnalyzerPredictionMode;
+typedef int8_t AV1ReferenceFrame;
+typedef int8_t AV1InterpFilter;
+
+typedef uint8_t AV1TransformType;
+typedef uint8_t AV1TransformSize;
 
 typedef struct AV1Image {
   unsigned char *planes[4];
@@ -58,11 +63,16 @@ typedef struct AV1AnalyzerMV {
  * Mode Info (MI)
  */
 typedef struct AV1AnalyzerMI {
-  AV1AnalyzerMV mv;
+  AV1AnalyzerMV mv[2];
+  AV1ReferenceFrame reference_frame[2];
+  AV1InterpFilter filter;
   AV1AnalyzerPredictionMode mode;
   int8_t dering_gain;
   int8_t skip;
   uint8_t block_size;
+
+  AV1TransformType transform_type;
+  AV1TransformSize transform_size;
 } AV1AnalyzerMI;
 
 typedef struct AV1AnalyzerMIBuffer {

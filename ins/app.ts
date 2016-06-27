@@ -75,6 +75,28 @@ enum MIProperty {
   GET_MI_DERING_GAIN
 }
 
+enum AOMAnalyzerTransformMode {
+  ONLY_4X4       = 0,
+  ALLOW_8X8      = 1,
+  ALLOW_16X16    = 2,
+  ALLOW_32X32    = 3,
+  TX_MODE_SELECT = 4
+}
+
+enum AOMAnalyzerTransformType {
+  DCT_DCT        = 0,
+  ADST_DCT       = 1,
+  DCT_ADST       = 2,
+  ADST_ADST      = 3
+}
+
+enum AOMAnalyzerTransformSize {
+  TX_4X4         = 0,
+  TX_8X8         = 1,
+  TX_16X16       = 2,
+  TX_32X32       = 3
+}
+
 interface AOMInternal {
   _read_frame (): number;
   _get_plane (pli: number): number;
@@ -1137,13 +1159,12 @@ class AppCtrl {
   }
 
   uiBlockInfo(name: string) {
-
     var mi = this.getMI();
     switch (name) {
       case "blockSize":
-        return this.blockSizeNames[this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, mi.x, mi.y)];
+        return AOMAnalyzerBlockSize[this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, mi.x, mi.y)];
       case "predictionMode":
-        return this.predictionModeNames[this.aom.get_mi_property(MIProperty.GET_MI_MODE, mi.x, mi.y)];
+        return AOMAnalyzerPredictionMode[this.aom.get_mi_property(MIProperty.GET_MI_MODE, mi.x, mi.y)];
       case "deringGain":
         return String(this.aom.get_mi_property(MIProperty.GET_MI_DERING_GAIN, mi.x, mi.y));
       case "motionVector":
@@ -1153,9 +1174,9 @@ class AppCtrl {
         return this.aom.get_mi_property(MIProperty.GET_MI_REFERENCE_FRAME, mi.x, mi.y, 0) + ", " +
                this.aom.get_mi_property(MIProperty.GET_MI_REFERENCE_FRAME, mi.x, mi.y, 1);
       case "transformType":
-        return this.aom.get_mi_property(MIProperty.GET_MI_TRANSFORM_TYPE, mi.x, mi.y);
+        return  AOMAnalyzerTransformType[this.aom.get_mi_property(MIProperty.GET_MI_TRANSFORM_TYPE, mi.x, mi.y)];
       case "transformSize":
-        return this.aom.get_mi_property(MIProperty.GET_MI_TRANSFORM_SIZE, mi.x, mi.y);
+        return AOMAnalyzerTransformSize[this.aom.get_mi_property(MIProperty.GET_MI_TRANSFORM_SIZE, mi.x, mi.y)];
     }
     return "?";
   }

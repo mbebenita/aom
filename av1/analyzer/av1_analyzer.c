@@ -24,6 +24,9 @@ aom_codec_err_t av1_analyze_frame(struct AV1Decoder *pbi) {
   pbi->analyzer_data->mi_rows = mi_rows;
   pbi->analyzer_data->mi_cols = mi_cols;
 
+  pbi->analyzer_data->tile_rows = 1 << cm->log2_tile_rows;
+  pbi->analyzer_data->tile_cols = 1 << cm->log2_tile_cols;
+
   // Save mode info.
   AV1AnalyzerMIBuffer mi_grid = pbi->analyzer_data->mi_grid;
   if (mi_grid.size > 0) {

@@ -173,7 +173,7 @@
             </tr>
             <tr>
               <td>Size</td>
-              <td>{{ vm.size.w }} x {{ vm.size.h }}</td>
+              <td>{{ vm.frameSize.w }} x {{ vm.frameSize.h }}</td>
             </tr>
             <tr>
               <td>File Size</td>
@@ -194,7 +194,14 @@
               </md-tooltip>
             </md-checkbox>
           </div>
-
+          <div style="padding: 0px; padding-left: 8px;">
+            <md-button class="md-raised" ng-click="vm.uiResetLayers()">
+              Reset Layers
+              <md-tooltip md-direction="top">
+                Resets Layers, Shortcut: x
+              </md-tooltip>
+            </md-button>
+          </div>
           <h1 class="title">Preferences</h1>
           <div>
             <div class="label">Grid Color</div>

@@ -87,6 +87,8 @@ typedef struct AV1AnalyzerData {
   AV1AnalyzerMIBuffer mi_grid;
   int mi_rows;
   int mi_cols;
+  int tile_rows;
+  int tile_cols;
 
 } AV1AnalyzerData;
 

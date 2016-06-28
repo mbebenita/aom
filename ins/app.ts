@@ -103,14 +103,17 @@ interface AOMInternal {
   _get_plane_stride (pli: number): number;
   _get_plane_width (pli: number): number;
   _get_plane_height (pli: number): number;
-  _get_mi_rows(): number;
-  _get_mi_cols(): number;
+  _get_mi_cols_and_rows(): number;
+  _get_tile_cols_and_rows(): number;
   _get_frame_count(): number;
   _get_frame_width(): number;
   _get_frame_height(): number;
   _open_file(): number;
 
   _get_mi_property(p: MIProperty, c: number, r: number, i: number): number;
+
+  _get_predicted_plane_buffer(pli: number): number;
+  _get_predicted_plane_stride(pli: number): number;
 
   HEAPU8: Uint8Array;
 }
@@ -139,12 +142,6 @@ class AOM {
   get_plane_height (pli: number): number {
     return this.native._get_plane_height(pli);
   }
-  get_mi_rows(): number {
-    return this.native._get_mi_rows();
-  }
-  get_mi_cols(): number {
-    return this.native._get_mi_cols();
-  }
   get_mi_property(p: MIProperty, c: number, r: number, i: number = 0) {
     return this.native._get_mi_property(p, c, r, i);
   }
@@ -153,6 +150,18 @@ class AOM {
   }
   getFrameSize(): Size {
     return new Size(this.native._get_frame_width(), this.native._get_frame_height());
+  }
+  getMIGridSize(): GridSize {
+    var v = this.native._get_mi_cols_and_rows();
+    var cols = v >> 16;
+    var rows = this.native._get_mi_cols_and_rows() & 0xFF;
+    return new GridSize(cols, rows);
+  }
+  getTileGridSize(): GridSize {
+    var v = this.native._get_tile_cols_and_rows();
+    var cols = v >> 16;
+    var rows = v & 0xFF;
+    return new GridSize(cols, rows);
   }
 }
 
@@ -198,6 +207,12 @@ class Rectangle {
 		}
 		return this;
 	}
+}
+
+class GridSize {
+  constructor (public cols: number, public rows: number) {
+    // ...
+  }
 }
 
 class Vector {
@@ -281,6 +296,7 @@ class AppCtrl {
   showImage: boolean = true;
 
   showSuperBlockGrid: boolean = false;
+  showTileGrid: boolean = false;
   showBlockSplit: boolean = false;
   showMotionVectors: boolean = false;
   showDering: boolean = false;
@@ -321,6 +337,12 @@ class AppCtrl {
       key: "2",
       description: "Show SB Grid",
       detail: "Shows 64x64 mode info grid.",
+      default: false
+    },
+    showTileGrid: {
+      key: "t",
+      description: "Show Tile Grid",
+      detail: "Shows tile grid.",
       default: false
     },
     showBlockSplit: {
@@ -429,12 +451,14 @@ class AppCtrl {
   mvColor = "hsl(232, 36%, 41%)";
   skipColor = "hsla(326, 53%, 42%, 0.2)";
   gridColor = "rgba(55,55,55,1)";
+  tileGridColor = "hsl(0, 100%, 69%)";
   splitColor = "rgba(33,33,33,1)";
 
   crosshairLineWidth = 2;
   crosshairColor = "rgba(33,33,33,0.5)";
 
   gridLineWidth = 3;
+  tileGridLineWidth = 5;
   splitLineWidth = 1;
   modeLineWidth = 2;
   blockSize = 8;
@@ -544,6 +568,12 @@ class AppCtrl {
     Mousetrap.bind(['['], () => {
       this.uiZoom(1 / 2);
       this.uiApply();
+    });
+
+    Mousetrap.bind(['x'], (e) => {
+      this.uiResetLayers();
+      this.drawFrame();
+      e.preventDefault();
     });
 
     var self = this;
@@ -704,6 +734,12 @@ class AppCtrl {
     this.sharingLink = url + "?" + argListString;
   }
 
+  uiResetLayers() {
+    for (var name in this.options) {
+      this[name] = this.options[name].default;
+    }
+  }
+
   uiChange() {
     this.updateSharingLink();
     this.resetCanvases();
@@ -835,15 +871,12 @@ class AppCtrl {
   }
 
   drawSuperBlockGrid(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
-    var cols = this.aom.get_mi_cols();
-    var rows = this.aom.get_mi_rows();
+    var {cols, rows} = this.aom.getMIGridSize();
+    var {cols: tileCols, rows: tilwRows} = this.aom.getTileGridSize();
     var scale = dst.w / src.w | 0;
     var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
     ctx.save();
-    ctx.lineWidth = this.gridLineWidth;
-    ctx.strokeStyle = this.gridColor;
     ctx.globalAlpha = 1;
-
     var lineOffset = getLineOffset(this.gridLineWidth);
     ctx.translate(lineOffset, lineOffset);
     ctx.translate(-src.x * scale, -src.y * scale);
@@ -859,6 +892,36 @@ class AppCtrl {
       ctx.lineTo(scaledFrameSize.w, offset);
     }
     ctx.closePath();
+    ctx.strokeStyle = this.gridColor;
+    ctx.lineWidth = this.gridLineWidth;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawTileGrid(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
+    var {cols, rows} = this.aom.getMIGridSize();
+    var {cols: tileCols, rows: tilwRows} = this.aom.getTileGridSize();
+    var scale = dst.w / src.w | 0;
+    var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
+    ctx.save();
+    ctx.globalAlpha = 1;
+    var lineOffset = getLineOffset(this.tileGridLineWidth);
+    ctx.translate(lineOffset, lineOffset);
+    ctx.translate(-src.x * scale, -src.y * scale);
+    ctx.beginPath();
+    for (var c = 0; c <= cols; c += 8 * tileCols) {
+      var offset = c * this.blockSize * scale;
+      ctx.moveTo(offset, 0);
+      ctx.lineTo(offset, scaledFrameSize.h);
+    }
+    for (var r = 0; r <= rows; r += 8 * tilwRows) {
+      var offset = r * this.blockSize * scale;
+      ctx.moveTo(0, offset);
+      ctx.lineTo(scaledFrameSize.w, offset);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = this.tileGridColor;
+    ctx.lineWidth = this.tileGridLineWidth;
     ctx.stroke();
     ctx.restore();
   }
@@ -923,7 +986,6 @@ class AppCtrl {
       var dw = this.frameSize.w * this.scale * this.ratio;
       var dh = this.frameSize.h * this.scale * this.ratio;
       this.displayContext.drawImage(this.frameCanvas, 0, 0, dw, dh);
-
     }
 
     this.drawMain();
@@ -947,18 +1009,18 @@ class AppCtrl {
     this.showSkip && this.drawSkip(ctx, src, dst);
     this.showBlockSplit && this.drawBlockSplit(ctx, src, dst);
     this.showSuperBlockGrid && this.drawSuperBlockGrid(ctx, src, dst);
+    this.showTileGrid && this.drawTileGrid(ctx, src, dst);
   }
 
   drawMode(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
-    var cols = this.aom.get_mi_cols();
-    var rows = this.aom.get_mi_rows();
+    var {cols, rows} = this.aom.getMIGridSize();
     var scale = dst.w / src.w;
     var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
 
     ctx.save();
     ctx.lineWidth = this.modeLineWidth;
     ctx.strokeStyle = this.modeColor;
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = 0.5;
     var lineOffset = getLineOffset(this.modeLineWidth);
     ctx.translate(-src.x * scale, -src.y * scale);
 
@@ -1018,8 +1080,7 @@ class AppCtrl {
   }
 
   drawBlockSplit(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
-    var cols = this.aom.get_mi_cols();
-    var rows = this.aom.get_mi_rows();
+    var {cols, rows} = this.aom.getMIGridSize();
     var scale = dst.w / src.w;
     var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
 
@@ -1115,8 +1176,7 @@ class AppCtrl {
   }
 
   drawFillBlock(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle, setFillStyle: (c: number, r: number) => boolean) {
-    var cols = this.aom.get_mi_cols();
-    var rows = this.aom.get_mi_rows();
+    var {cols, rows} = this.aom.getMIGridSize();
     var scale = dst.w / src.w;
     var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
     ctx.save();
@@ -1182,8 +1242,7 @@ class AppCtrl {
   }
 
   drawMotionVectors(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
-    var cols = this.aom.get_mi_cols();
-    var rows = this.aom.get_mi_rows();
+    var {cols, rows} = this.aom.getMIGridSize();
     var scale = dst.w / src.w;
     var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
 
@@ -1289,8 +1348,7 @@ class AppCtrl {
 
   drawMotionVectors2() {
     var ctx = this.overlayContext;
-    var cols = this.aom.get_mi_cols();
-    var rows = this.aom.get_mi_rows();
+    var {cols, rows} = this.aom.getMIGridSize();
     var s = this.scale * this.ratio;
     ctx.globalAlpha = 0.5;
 

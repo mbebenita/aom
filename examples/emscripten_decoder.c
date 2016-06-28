@@ -203,13 +203,13 @@ int get_frame_count() {
 }
 
 EMSCRIPTEN_KEEPALIVE
-int get_mi_rows() {
-  return cm->mi_rows;
+int get_mi_cols_and_rows() {
+  return analyzer_data.mi_cols << 16 | analyzer_data.mi_rows;
 }
 
 EMSCRIPTEN_KEEPALIVE
-int get_mi_cols() {
-  return cm->mi_cols;
+int get_tile_cols_and_rows() {
+  return analyzer_data.tile_cols << 16 | analyzer_data.tile_rows;
 }
 
 typedef enum {

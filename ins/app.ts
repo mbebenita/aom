@@ -31,6 +31,18 @@ function getLineOffset(lineWidth: number) {
   return lineWidth % 2 == 0 ? 0 : 0.5;
 }
 
+const mi_block_size_log2 = 3;
+
+function alignPowerOfTwo(value: number, n: number) {
+  return ((value) + ((1 << n) - 1)) & ~((1 << n) - 1);
+}
+
+function tileOffset(i: number, rowsOrCols: number, tileRowsOrColsLog2: number) {
+  var sbRowsOrCols = alignPowerOfTwo(rowsOrCols, mi_block_size_log2) >> mi_block_size_log2;
+  var offset = ((i * sbRowsOrCols) >> tileRowsOrColsLog2) << mi_block_size_log2;
+  return Math.min(offset, rowsOrCols);
+}
+
 enum AOMAnalyzerPredictionMode {
   DC_PRED 		= 0,   // Average of above and left pixels
   V_PRED 			= 1,   // Vertical
@@ -104,7 +116,7 @@ interface AOMInternal {
   _get_plane_width (pli: number): number;
   _get_plane_height (pli: number): number;
   _get_mi_cols_and_rows(): number;
-  _get_tile_cols_and_rows(): number;
+  _get_tile_cols_and_rows_log2(): number;
   _get_frame_count(): number;
   _get_frame_width(): number;
   _get_frame_height(): number;
@@ -157,8 +169,8 @@ class AOM {
     var rows = this.native._get_mi_cols_and_rows() & 0xFF;
     return new GridSize(cols, rows);
   }
-  getTileGridSize(): GridSize {
-    var v = this.native._get_tile_cols_and_rows();
+  getTileGridSizeLog2(): GridSize {
+    var v = this.native._get_tile_cols_and_rows_log2();
     var cols = v >> 16;
     var rows = v & 0xFF;
     return new GridSize(cols, rows);
@@ -286,6 +298,7 @@ class Vector {
 class AppCtrl {
   aom: AOM = null;
   frameSize: Size = new Size(128, 128);
+  tileGridSize: GridSize = new GridSize(0, 0);
   fileSize: number = 0;
   ratio: number = 1;
   scale: number = 1;
@@ -776,6 +789,10 @@ class AppCtrl {
       }
       this.lastDecodeFrameTime = performance.now() - s;
       this.frameNumber ++;
+
+      var tileGridSize = this.aom.getTileGridSizeLog2();
+      this.tileGridSize.cols = 1 << tileGridSize.cols;
+      this.tileGridSize.rows = 1 << tileGridSize.rows;
     }
   }
 
@@ -872,7 +889,6 @@ class AppCtrl {
 
   drawSuperBlockGrid(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
     var {cols, rows} = this.aom.getMIGridSize();
-    var {cols: tileCols, rows: tilwRows} = this.aom.getTileGridSize();
     var scale = dst.w / src.w | 0;
     var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
     ctx.save();
@@ -900,7 +916,7 @@ class AppCtrl {
 
   drawTileGrid(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
     var {cols, rows} = this.aom.getMIGridSize();
-    var {cols: tileCols, rows: tilwRows} = this.aom.getTileGridSize();
+    var {cols: tileColsLog2, rows: tileRowsLog2} = this.aom.getTileGridSizeLog2();
     var scale = dst.w / src.w | 0;
     var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
     ctx.save();
@@ -909,13 +925,14 @@ class AppCtrl {
     ctx.translate(lineOffset, lineOffset);
     ctx.translate(-src.x * scale, -src.y * scale);
     ctx.beginPath();
-    for (var c = 0; c <= cols; c += 8 * tileCols) {
-      var offset = c * this.blockSize * scale;
+
+    for (var c = 0; c <= 1 << tileColsLog2; c ++) {
+      var offset = tileOffset(c, cols, tileColsLog2) * this.blockSize * scale;
       ctx.moveTo(offset, 0);
       ctx.lineTo(offset, scaledFrameSize.h);
     }
-    for (var r = 0; r <= rows; r += 8 * tilwRows) {
-      var offset = r * this.blockSize * scale;
+    for (var r = 0; r <= 1 << tileRowsLog2; r ++) {
+      var offset = tileOffset(r, rows, tileRowsLog2) * this.blockSize * scale;
       ctx.moveTo(0, offset);
       ctx.lineTo(scaledFrameSize.w, offset);
     }

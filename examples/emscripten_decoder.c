@@ -208,8 +208,8 @@ int get_mi_cols_and_rows() {
 }
 
 EMSCRIPTEN_KEEPALIVE
-int get_tile_cols_and_rows() {
-  return analyzer_data.tile_cols << 16 | analyzer_data.tile_rows;
+int get_tile_cols_and_rows_log2() {
+  return analyzer_data.tile_cols_log2 << 16 | analyzer_data.tile_rows_log2;
 }
 
 typedef enum {

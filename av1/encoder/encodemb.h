@@ -43,6 +43,36 @@ void av1_encode_intra_block_plane(MACROBLOCK *x, BLOCK_SIZE bsize, int plane);
 void av1_fwd_txfm_4x4(const int16_t *src_diff, tran_low_t *coeff,
                       int diff_stride, TX_TYPE tx_type, int lossless);
 
+void fwd_txfm_8x8(const int16_t *src_diff, tran_low_t *coeff,
+                  int diff_stride, TX_TYPE tx_type);
+
+void fwd_txfm_16x16(const int16_t *src_diff, tran_low_t *coeff,
+                    int diff_stride, TX_TYPE tx_type);
+
+void fwd_txfm_32x32(int rd_transform, const int16_t *src_diff,
+                    tran_low_t *coeff, int diff_stride, TX_TYPE tx_type);
+
+#if CONFIG_PVQ
+int pvq_encode_helper(daala_enc_ctx *daala_enc,
+    tran_low_t *const coeff, tran_low_t *ref_coeff,
+    tran_low_t *const dqcoeff,
+    uint16_t *eob, const int16_t *quant,
+    int plane, int tx_size, int *rate, PVQ_INFO *pvq_info);
+
+void store_pvq_enc_info(PVQ_INFO *pvq_info,
+                        int *qg,
+                        int *theta,
+                        int *max_theta,
+                        int *k,
+                        od_coeff *y,
+                        int nb_bands,
+                        const int *off,
+                        int *size,
+                        int skip_rest,
+                        int skip_dir,
+                        int bs);
+#endif
+
 #if CONFIG_AOM_HIGHBITDEPTH
 void av1_highbd_fwd_txfm_4x4(const int16_t *src_diff, tran_low_t *coeff,
                              int diff_stride, TX_TYPE tx_type, int lossless);

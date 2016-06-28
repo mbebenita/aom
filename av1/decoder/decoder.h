@@ -23,7 +23,14 @@
 #include "av1/common/onyxc_int.h"
 #include "av1/decoder/dthread.h"
 
+
 #include "av1/analyzer/av1_analyzer.h"
+
+#if CONFIG_PVQ
+#include "av1/encoder/encodemb.h"
+#include "av1/decoder/decint.h"
+#include "aom_dsp/entdec.h"
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,6 +43,10 @@ typedef struct TileData {
   DECLARE_ALIGNED(16, MACROBLOCKD, xd);
   /* dqcoeff are shared by all the planes. So planes must be decoded serially */
   DECLARE_ALIGNED(16, tran_low_t, dqcoeff[32 * 32]);
+#if CONFIG_PVQ
+  /* forward transformed predicted image, a reference for PVQ */
+  DECLARE_ALIGNED(16, tran_low_t, pvq_ref_coeff[32 * 32]);
+#endif
   DECLARE_ALIGNED(16, uint8_t, color_index_map[2][64 * 64]);
 } TileData;
 
@@ -46,6 +57,10 @@ typedef struct TileWorkerData {
   DECLARE_ALIGNED(16, MACROBLOCKD, xd);
   /* dqcoeff are shared by all the planes. So planes must be decoded serially */
   DECLARE_ALIGNED(16, tran_low_t, dqcoeff[32 * 32]);
+#if CONFIG_PVQ
+  /* forward transformed predicted image, a reference for PVQ */
+  DECLARE_ALIGNED(16, tran_low_t, pvq_ref_coeff[32 * 32]);
+#endif
   DECLARE_ALIGNED(16, uint8_t, color_index_map[2][64 * 64]);
   struct aom_internal_error_info error_info;
 } TileWorkerData;

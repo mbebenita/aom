@@ -14,6 +14,9 @@
 
 #include "av1/common/entropymv.h"
 #include "av1/common/entropy.h"
+#if CONFIG_PVQ
+#include "av1/encoder/encint.h"
+#endif
 #if CONFIG_REF_MV
 #include "av1/common/mvref_common.h"
 #endif
@@ -30,6 +33,7 @@ typedef struct {
 
 struct macroblock_plane {
   DECLARE_ALIGNED(16, int16_t, src_diff[64 * 64]);
+  DECLARE_ALIGNED(16, int16_t, src_int16[64 * 64]);
   tran_low_t *qcoeff;
   tran_low_t *coeff;
   uint16_t *eobs;
@@ -68,7 +72,6 @@ struct macroblock {
   MB_MODE_INFO_EXT *mbmi_ext;
   int skip_block;
   int select_tx_size;
-  int skip_optimize;
   int q_index;
 
   // The equivalent error at the current rdmult of one whole bit (not one
@@ -152,6 +155,14 @@ struct macroblock {
 
   // Used to store sub partition's choices.
   MV pred_mv[MAX_REF_FRAMES];
+
+#if CONFIG_PVQ
+  int rate;
+  int64_t dist;
+  PVQ_QUEUE *pvq_q;
+  PVQ_INFO pvq[256][3]; // 16x16 of 4x4 blocks, YUV
+  daala_enc_ctx daala_enc;
+#endif
 };
 
 #ifdef __cplusplus

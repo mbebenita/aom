@@ -28,6 +28,11 @@
 #include "av1/common/scale.h"
 #include "av1/common/seg_common.h"
 #include "av1/common/tile_common.h"
+#if CONFIG_PVQ
+#include "av1/common/pvq.h"
+#include "av1/common/state.h"
+#include "av1/decoder/decint.h"
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -87,6 +92,34 @@ static INLINE int is_inter_mode(PREDICTION_MODE mode) {
   return mode >= NEARESTMV && mode <= NEWMV;
 }
 
+#if CONFIG_PVQ
+typedef struct PVQ_INFO {
+  int theta[PVQ_MAX_PARTITIONS];
+  int max_theta[PVQ_MAX_PARTITIONS];
+  int qg[PVQ_MAX_PARTITIONS];
+  int k[PVQ_MAX_PARTITIONS];
+  od_coeff y[OD_BSIZE_MAX*OD_BSIZE_MAX];
+  int nb_bands;
+  int off[PVQ_MAX_PARTITIONS];
+  int size[PVQ_MAX_PARTITIONS];
+  int skip_rest;
+  int skip_dir;
+  int bs;         // log of the block size minus two,
+                  // i.e. equivalent to aom's TX_SIZE
+  int ac_dc_coded;// block skip info, indicating whether DC/AC is coded.
+                  // bit0: DC coded, bit1 : AC coded (1 means coded)
+  tran_low_t dq_dc_residue;
+  int eob;
+} PVQ_INFO;
+
+typedef struct PVQ_QUEUE {
+  PVQ_INFO *buf; // buffer for pvq info, stored in encoding order
+  int curr_pos; // curr position to write PVQ_INFO
+  int buf_len;  // allocated buffer length
+  int last_pos; // last written position of PVQ_INFO in a tile
+} PVQ_QUEUE;
+#endif
+
 /* For keyframes, intra block modes are predicted by the (already decoded)
    modes for the Y blocks to the left and above us; for interframes, there
    is a single probability table. */
@@ -99,36 +132,10 @@ typedef struct {
 #endif
 } b_mode_info;
 
-// Note that the rate-distortion optimization loop, bit-stream writer, and
-// decoder implementation modules critically rely on the defined entry values
-// specified herein. They should be refactored concurrently.
-
-#define NONE -1
-#define INTRA_FRAME 0
-#define LAST_FRAME 1
-
-#if CONFIG_EXT_REFS
-
-#define LAST2_FRAME 2
-#define LAST3_FRAME 3
-#define GOLDEN_FRAME 4
-#define BWDREF_FRAME 5
-#define ALTREF_FRAME 6
-#define MAX_REF_FRAMES 7
-#define LAST_REF_FRAMES (LAST3_FRAME - LAST_FRAME + 1)
-
-#else
-
-#define GOLDEN_FRAME 2
-#define ALTREF_FRAME 3
-#define MAX_REF_FRAMES 4
-
-#endif  // CONFIG_EXT_REFS
-
 typedef int8_t MV_REFERENCE_FRAME;
 
 #if CONFIG_REF_MV
-#define MODE_CTX_REF_FRAMES (MAX_REF_FRAMES + (ALTREF_FRAME - LAST_FRAME))
+#define MODE_CTX_REF_FRAMES (MAX_REF_FRAMES + COMP_REFS)
 #else
 #define MODE_CTX_REF_FRAMES MAX_REF_FRAMES
 #endif
@@ -223,8 +230,15 @@ struct macroblockd_plane {
 #endif
   // encoder
   const int16_t *dequant;
+
 #if CONFIG_AOM_QM
   const qm_val_t *seg_qmatrix[MAX_SEGMENTS][2][TX_SIZES];
+#endif
+
+#if CONFIG_PVQ
+  DECLARE_ALIGNED(16, int16_t, pred[64 * 64]);
+  // PVQ: forward transformed predicted image, a reference for PVQ.
+  tran_low_t *pvq_ref_coeff;
 #endif
 };
 
@@ -285,6 +299,9 @@ typedef struct macroblockd {
   PARTITION_CONTEXT *above_seg_context;
   PARTITION_CONTEXT left_seg_context[8];
 
+#if CONFIG_PVQ
+  daala_dec_ctx daala_dec;
+#endif
 #if CONFIG_AOM_HIGHBITDEPTH
   /* Bit depth: 8, 10, 12 */
   int bd;

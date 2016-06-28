@@ -73,7 +73,7 @@
                                        // mv. Choose a very high value for
                                        // now so that HIGH_PRECISION is always
                                        // chosen.
-// #define OUTPUT_YUV_REC
+#define OUTPUT_YUV_REC
 
 #ifdef OUTPUT_YUV_DENOISED
 FILE *yuv_denoised_file = NULL;
@@ -353,6 +353,20 @@ static void dealloc_compressor_data(AV1_COMP *cpi) {
   aom_free(cpi->mbmi_ext_base);
   cpi->mbmi_ext_base = NULL;
 
+#if CONFIG_PVQ
+  {
+  const int tile_cols = 1 << cm->log2_tile_cols;
+  const int tile_rows = 1 << cm->log2_tile_rows;
+  int tile_col, tile_row;
+
+  for (tile_row = 0; tile_row < tile_rows; ++tile_row)
+    for (tile_col = 0; tile_col < tile_cols; ++tile_col) {
+      TileDataEnc *tile_data =
+          &cpi->tile_data[tile_row * tile_cols + tile_col];
+      aom_free(tile_data->pvq_q.buf);
+    }
+  }
+#endif
   aom_free(cpi->tile_data);
   cpi->tile_data = NULL;
 
@@ -769,7 +783,11 @@ static void update_frame_size(AV1_COMP *cpi) {
 
   av1_set_mb_mi(cm, cm->width, cm->height);
   av1_init_context_buffers(cm);
+#if !CONFIG_PVQ
   av1_init_macroblockd(cm, xd, NULL);
+#else
+  av1_init_macroblockd(cm, xd, NULL, NULL);
+#endif
   memset(cpi->mbmi_ext_base, 0,
          cm->mi_rows * cm->mi_cols * sizeof(*cpi->mbmi_ext_base));
 
@@ -3461,6 +3479,10 @@ static void encode_frame_to_data_rate(AV1_COMP *cpi, size_t *size,
     ++cm->current_video_frame;
   }
   cm->prev_frame = cm->cur_frame;
+
+#ifdef OUTPUT_YUV_REC
+  av1_write_yuv_rec_frame(cm);
+#endif
 }
 
 static void Pass0Encode(AV1_COMP *cpi, size_t *size, uint8_t *dest,

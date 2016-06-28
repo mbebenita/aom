@@ -127,6 +127,11 @@ void init_analyzer() {
   printf("init_analyzer: %d:%d (mi)\n", mi_cols, mi_rows);
   analyzer_data.mi_grid.buffer = aom_malloc(sizeof(AV1AnalyzerMI) * mi_count);
   analyzer_data.mi_grid.size = mi_count;
+
+  int size = aligned_width * aligned_height * 2;
+  analyzer_data.predicted_image.planes[0].size = size;
+  analyzer_data.predicted_image.planes[0].stride = aligned_width;
+  analyzer_data.predicted_image.planes[0].buffer = aom_malloc(size);
 }
 
 void dump_analyzer() {
@@ -137,12 +142,12 @@ void dump_analyzer() {
   for (r = 0; r < mi_rows; ++r) {
     for (c = 0; c < mi_cols; ++c) {
       AV1AnalyzerMI mi = analyzer_data.mi_grid.buffer[r * mi_cols + c];
-      printf("%d ", mi.mode);
+      // printf("%d ", mi.mode);
       // printf("%3d:%-3d ", abs(mv.row), abs(mv.col));
        // printf("%d:%d ", mv.row, mv.col);
       // ...
     }
-    printf("\n");
+    // printf("\n");
   }
 }
 
@@ -277,6 +282,15 @@ int get_frame_height() {
   return info->frame_height;
 }
 
+EMSCRIPTEN_KEEPALIVE
+unsigned char *get_predicted_plane_buffer(int plane) {
+  return analyzer_data.predicted_image.planes[plane].buffer;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int get_predicted_plane_stride(int plane) {
+  return analyzer_data.predicted_image.planes[plane].stride;
+}
 
 EMSCRIPTEN_KEEPALIVE
 int main(int argc, char **argv) {

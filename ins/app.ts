@@ -157,6 +157,12 @@ class AOM {
   get_mi_property(p: MIProperty, c: number, r: number, i: number = 0) {
     return this.native._get_mi_property(p, c, r, i);
   }
+  get_predicted_plane_buffer(pli: number): number {
+    return this.native._get_predicted_plane_buffer(pli);
+  }
+  get_predicted_plane_stride(pli: number): number {
+    return this.native._get_predicted_plane_stride(pli);
+  }
   get_frame_count(): number {
     return this.native._get_frame_count();
   }
@@ -307,6 +313,7 @@ class AppCtrl {
   showU: boolean = true;
   showV: boolean = true;
   showImage: boolean = true;
+  showPredictedImage: boolean = false;
 
   showSuperBlockGrid: boolean = false;
   showTileGrid: boolean = false;
@@ -340,14 +347,21 @@ class AppCtrl {
       default: true
     },
     showImage: {
-      key: "1",
+      key: "i",
       description: "Show Image",
-      detail: "Shows image planes.",
+      detail: "Shows image.",
+      updatesImage: true,
+      default: true
+    },
+    showPredictedImage: {
+      key: "p",
+      description: "Show Predicted Image",
+      detail: "Shows predicted image.",
       updatesImage: true,
       default: true
     },
     showSuperBlockGrid: {
-      key: "2",
+      key: "b",
       description: "Show SB Grid",
       detail: "Shows 64x64 mode info grid.",
       default: false
@@ -359,31 +373,31 @@ class AppCtrl {
       default: false
     },
     showBlockSplit: {
-      key: "3",
+      key: "s",
       description: "Show Split Grid",
       detail: "Shows block partitions.",
       default: false
     },
     showDering: {
-      key: "4",
+      key: "d",
       description: "Show Dering",
       detail: "Shows blocks where the deringing filter is applied.",
       default: false
     },
     showMotionVectors: {
-      key: "5",
+      key: "v",
       description: "Show Motion Vectors",
       detail: "Shows motion vectors, darker colors represent longer vectors.",
       default: false
     },
     showMode: {
-      key: "6",
+      key: "m",
       description: "Show Mode",
       detail: "Shows prediction modes.",
       default: false
     },
     showSkip: {
-      key: "8",
+      key: "k",
       description: "Show Skip",
       detail: "Shows skip flags.",
       default: false
@@ -405,6 +419,9 @@ class AppCtrl {
   blockInfo = {
     blockSize: {
       description: "Block Size"
+    },
+    blockSkip: {
+      description: "Block Skip"
     },
     predictionMode: {
       description: "Prediction Mode"
@@ -453,6 +470,9 @@ class AppCtrl {
 
   frameCanvas: HTMLCanvasElement;
   frameContext: CanvasRenderingContext2D = null;
+
+  compositionCanvas: HTMLCanvasElement;
+  compositionContext: CanvasRenderingContext2D = null;
 
   lastDecodeFrameTime: number = 0;
 
@@ -526,6 +546,9 @@ class AppCtrl {
     this.frameCanvas = document.createElement("canvas");
     this.frameContext = this.frameCanvas.getContext("2d");
 
+    this.compositionCanvas = document.createElement("canvas");
+    this.compositionContext = this.compositionCanvas.getContext("2d");
+
     var parameters = getUrlParameters();
     for (var name in this.options) {
       this[name] = this.options[name].default;
@@ -585,7 +608,6 @@ class AppCtrl {
 
     Mousetrap.bind(['x'], (e) => {
       this.uiResetLayers();
-      this.drawFrame();
       e.preventDefault();
     });
 
@@ -594,8 +616,7 @@ class AppCtrl {
       var option = this.options[name];
       self[name] = !self[name];
       if (option.updatesImage) {
-        self.clearImage();
-        self.drawImage();
+        self.drawImages();
       }
       self.drawMain();
       self.showInfo && self.drawInfo();
@@ -653,6 +674,8 @@ class AppCtrl {
   }
 
   openFile(path: string, next: () => any = null) {
+    var fileName = path.replace(/^.*[\\\/]/, '')
+    document.title = fileName;
     this.downloadFile(path, (buffer: Uint8Array) => {
       this.openFileBytes(buffer);
       next();
@@ -660,8 +683,8 @@ class AppCtrl {
   }
 
   resetCanvases() {
-    this.frameCanvas.width = this.frameSize.w;
-		this.frameCanvas.height = this.frameSize.h;
+    this.frameCanvas.width = this.compositionCanvas.width = this.frameSize.w;
+		this.frameCanvas.height = this.compositionCanvas.height = this.frameSize.h;
 
     this.imageData = this.frameContext.createImageData(this.frameSize.w, this.frameSize.h);
 
@@ -751,6 +774,7 @@ class AppCtrl {
     for (var name in this.options) {
       this[name] = this.options[name].default;
     }
+    this.drawFrame();
   }
 
   uiChange() {
@@ -826,11 +850,11 @@ class AppCtrl {
     var dst = new Rectangle(0, 0, this.zoomSize * this.ratio, this.zoomSize * this.ratio);
 
     this.zoomContext.clearRect(0, 0, dst.w, dst.h);
-    if (this.showImage) {
+    if (this.showImage || this.showPredictedImage) {
       this.zoomContext.mozImageSmoothingEnabled = false;
       this.zoomContext.imageSmoothingEnabled = false;
       this.zoomContext.clearRect(dst.x, dst.y, dst.w, dst.h);
-      this.zoomContext.drawImage(this.frameCanvas,
+      this.zoomContext.drawImage(this.compositionCanvas,
         src.x, src.y, src.w, src.h,
         dst.x, dst.y, dst.w, dst.h);
     }
@@ -943,26 +967,47 @@ class AppCtrl {
     ctx.restore();
   }
 
+
   drawFrame() {
-    this.clearImage();
-    this.drawImage();
+    this.drawImages();
     this.drawInfo();
     this.drawMain();
   }
 
   clearImage() {
-    var ctx = this.displayContext;
-    ctx.clearRect(0, 0, this.frameSize.w * this.scale * this.ratio, this.frameSize.h * this.scale * this.ratio);
+    this.compositionContext.clearRect(0, 0, this.frameSize.w, this.frameSize.h);
+    this.displayContext.clearRect(0, 0, this.frameSize.w * this.scale * this.ratio, this.frameSize.h * this.scale * this.ratio);
   }
 
-  drawImage() {
+  drawImages() {
+    this.clearImage();
+    this.showImage && this.drawDecodedImage();
+    this.showPredictedImage && this.drawPredictedImage("difference");
+  }
+
+  drawDecodedImage(compositeOperation: string = "source-over") {
     var Yp = this.aom.get_plane(0);
     var Ys = this.aom.get_plane_stride(0);
     var Up = this.aom.get_plane(1);
     var Us = this.aom.get_plane_stride(1);
     var Vp = this.aom.get_plane(2);
     var Vs = this.aom.get_plane_stride(2);
+    this.drawImage(Yp, Ys, Up, Us, Vp, Vs, compositeOperation);
+  }
 
+  drawPredictedImage(compositeOperation: string = "source-over") {
+    var Yp = this.aom.get_predicted_plane_buffer(0);
+    var Ys = this.aom.get_predicted_plane_stride(0);
+
+    var Up = this.aom.get_predicted_plane_buffer(1);
+    var Us = this.aom.get_predicted_plane_stride(1);
+
+    var Vp = this.aom.get_predicted_plane_buffer(2);
+    var Vs = this.aom.get_predicted_plane_stride(2);
+    this.drawImage(Yp, Ys, Up, Us, Vp, Vs, compositeOperation);
+  }
+
+  drawImage(Yp, Ys, Up, Us, Vp, Vs, compositeOperation: string) {
     var I = this.imageData.data;
     var H = this.aom.HEAPU8;
 
@@ -995,14 +1040,16 @@ class AppCtrl {
       }
     }
 
-    if (this.showImage && this.imageData) {
+    if (this.imageData) {
       this.frameContext.putImageData(this.imageData, 0, 0);
+      this.compositionContext.globalCompositeOperation = compositeOperation;
+      this.compositionContext.drawImage(this.frameCanvas, 0, 0, this.frameSize.w, this.frameSize.h);
+
       this.displayContext.mozImageSmoothingEnabled = false;
       this.displayContext.imageSmoothingEnabled = false;
-
       var dw = this.frameSize.w * this.scale * this.ratio;
       var dh = this.frameSize.h * this.scale * this.ratio;
-      this.displayContext.drawImage(this.frameCanvas, 0, 0, dw, dh);
+      this.displayContext.drawImage(this.compositionCanvas, 0, 0, dw, dh);
     }
 
     this.drawMain();
@@ -1240,6 +1287,8 @@ class AppCtrl {
     switch (name) {
       case "blockSize":
         return AOMAnalyzerBlockSize[this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, mi.x, mi.y)];
+      case "blockSkip":
+        return this.aom.get_mi_property(MIProperty.GET_MI_SKIP, mi.x, mi.y);
       case "predictionMode":
         return AOMAnalyzerPredictionMode[this.aom.get_mi_property(MIProperty.GET_MI_MODE, mi.x, mi.y)];
       case "deringGain":

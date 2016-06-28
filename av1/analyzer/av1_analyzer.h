@@ -46,9 +46,14 @@ typedef int8_t AV1InterpFilter;
 typedef uint8_t AV1TransformType;
 typedef uint8_t AV1TransformSize;
 
+typedef struct AV1ImagePlane {
+  unsigned char *buffer;
+  int stride;
+  int size;
+} AV1ImagePlane;
+
 typedef struct AV1Image {
-  unsigned char *planes[4];
-  int stride[4];
+  AV1ImagePlane planes[4];
 } AV1Image;
 
 /**
@@ -84,6 +89,7 @@ typedef struct AV1AnalyzerMIBuffer {
 // Holds everything that is needed by the stream analyzer.
 typedef struct AV1AnalyzerData {
   AV1Image image;
+  AV1Image predicted_image;
   AV1AnalyzerMIBuffer mi_grid;
   int mi_rows;
   int mi_cols;
@@ -92,6 +98,16 @@ typedef struct AV1AnalyzerData {
 
 } AV1AnalyzerData;
 
+
+aom_codec_err_t av1_analyze_predicted_block(struct AV1Decoder *pbi,
+                                            int plane,
+                                            int mi_col,
+                                            int mi_row,
+                                            int col,
+                                            int row,
+                                            unsigned char* dst,
+                                            int dst_stride,
+                                            int transform_size);
 
 aom_codec_err_t av1_analyze_frame(struct AV1Decoder *pbi);
 

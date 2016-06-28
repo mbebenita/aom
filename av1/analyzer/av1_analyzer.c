@@ -10,6 +10,42 @@
 
 #include "av1_analyzer.h"
 #include "../common/blockd.h"
+#include "../common/onyxc_int.h"
+
+aom_codec_err_t av1_analyze_predicted_block(struct AV1Decoder *pbi,
+                                            int plane,
+                                            int mi_col,
+                                            int mi_row,
+                                            int col,
+                                            int row,
+                                            unsigned char* src,
+                                            int src_stride,
+                                            int transform_size) {
+  AV1_COMMON *const cm = &pbi->common;
+  const int mi_rows = cm->mi_rows;
+  const int mi_cols = cm->mi_cols;
+  if (pbi->analyzer_data == NULL) {
+    return AOM_CODEC_OK;
+  }
+  AV1Image *image = &pbi->analyzer_data->predicted_image;
+  AV1ImagePlane *imagePlane = &image->planes[plane];
+  if (imagePlane->buffer == NULL) {
+    return AOM_CODEC_OK;
+  }
+  int size = 4 << transform_size;
+  int offset = mi_row * 8 * imagePlane->stride + mi_col * 8 +
+               row * 4 * imagePlane->stride + col * 4;
+  if (offset > imagePlane->size) {
+    return AOM_CODEC_ERROR;
+  }
+
+  unsigned char* dst = imagePlane->buffer + offset;
+  for (int i = 0; i < size; i++) {
+    memcpy(dst, src, size);
+    dst += imagePlane->stride;
+    src += src_stride;
+  }
+}
 
 // Saves the decoder state.
 aom_codec_err_t av1_analyze_frame(struct AV1Decoder *pbi) {

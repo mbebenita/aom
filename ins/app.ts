@@ -1,10 +1,10 @@
-declare var angular: any;
-declare var FS: any;
-declare var Mousetrap: any;
-declare var tinycolor: any;
-declare var tinygradient: any;
+declare let angular: any;
+declare let FS: any;
+declare let Mousetrap: any;
+declare let tinycolor: any;
+declare let tinygradient: any;
 
-var colors = [
+let colors = [
   "#E85EBE", "#009BFF", "#00FF00", "#0000FF", "#FF0000", "#01FFFE", "#FFA6FE",
   "#FFDB66", "#006401", "#010067", "#95003A", "#007DB5", "#FF00F6", "#FFEEE8",
   "#774D00", "#90FB92", "#0076FF", "#D5FF00", "#FF937E", "#6A826C", "#FF029D",
@@ -17,7 +17,7 @@ var colors = [
 ];
 
 function hexToRGB(hex: string, alpha: number = 0) {
-  var r = parseInt(hex.slice(1,3), 16),
+  let r = parseInt(hex.slice(1,3), 16),
       g = parseInt(hex.slice(3,5), 16),
       b = parseInt(hex.slice(5,7), 16),
       a = "";
@@ -38,8 +38,8 @@ function alignPowerOfTwo(value: number, n: number) {
 }
 
 function tileOffset(i: number, rowsOrCols: number, tileRowsOrColsLog2: number) {
-  var sbRowsOrCols = alignPowerOfTwo(rowsOrCols, mi_block_size_log2) >> mi_block_size_log2;
-  var offset = ((i * sbRowsOrCols) >> tileRowsOrColsLog2) << mi_block_size_log2;
+  let sbRowsOrCols = alignPowerOfTwo(rowsOrCols, mi_block_size_log2) >> mi_block_size_log2;
+  let offset = ((i * sbRowsOrCols) >> tileRowsOrColsLog2) << mi_block_size_log2;
   return Math.min(offset, rowsOrCols);
 }
 
@@ -170,15 +170,15 @@ class AOM {
     return new Size(this.native._get_frame_width(), this.native._get_frame_height());
   }
   getMIGridSize(): GridSize {
-    var v = this.native._get_mi_cols_and_rows();
-    var cols = v >> 16;
-    var rows = this.native._get_mi_cols_and_rows() & 0xFF;
+    let v = this.native._get_mi_cols_and_rows();
+    let cols = v >> 16;
+    let rows = this.native._get_mi_cols_and_rows() & 0xFF;
     return new GridSize(cols, rows);
   }
   getTileGridSizeLog2(): GridSize {
-    var v = this.native._get_tile_cols_and_rows_log2();
-    var cols = v >> 16;
-    var rows = v & 0xFF;
+    let v = this.native._get_tile_cols_and_rows_log2();
+    let cols = v >> 16;
+    let rows = v & 0xFF;
     return new GridSize(cols, rows);
   }
 }
@@ -292,7 +292,7 @@ class Vector {
 		return this;
 	}
   clampLength(min: number, max: number) {
-		var length = this.length();
+		let length = this.length();
 		this.multiplyScalar(Math.max(min, Math.min(max, length)) / length);
 		return this;
 	}
@@ -513,16 +513,16 @@ class AppCtrl {
   $interval: any;
 
   constructor($scope, $interval) {
-    var self = this;
+    let self = this;
 
     this.$scope = $scope;
     // File input types don't have angular bindings, so we need set the
     // event handler on the scope object.
     $scope.fileInputNameChanged = function() {
-      var input = <any>event.target;
-      var reader = new FileReader();
+      let input = <any>event.target;
+      let reader = new FileReader();
       reader.onload = function() {
-        var buffer = reader.result;
+        let buffer = reader.result;
         self.openFileBytes(new Uint8Array(buffer));
         self.playFrameAsync(1, () => {
           self.drawFrame();
@@ -558,18 +558,18 @@ class AppCtrl {
     this.compositionCanvas = document.createElement("canvas");
     this.compositionContext = this.compositionCanvas.getContext("2d");
 
-    var parameters = getUrlParameters();
-    for (var name in this.options) {
+    let parameters = getUrlParameters();
+    for (let name in this.options) {
       this[name] = this.options[name].default;
       if (name in parameters) {
         // TODO: Check for boolean here..
         this[name] = parameters[name] == "true";
       }
     }
-    var frames = parseInt(parameters.frameNumber) || 1;
+    let frames = parseInt(parameters.frameNumber) || 1;
 
     this.aom = new AOM();
-    var file = "media/crosswalk.ivf";
+    let file = "media/crosswalk.ivf";
     this.openFile(file, () => {
       this.playFrameAsync(frames, () => {
         this.drawFrame();
@@ -581,12 +581,12 @@ class AppCtrl {
   }
 
   initEnums() {
-    for (var k in AOMAnalyzerPredictionMode) {
+    for (let k in AOMAnalyzerPredictionMode) {
       if (isNaN(parseInt(k))) {
         this.predictionModeNames.push(k);
       }
     }
-    for (var k in AOMAnalyzerBlockSize) {
+    for (let k in AOMAnalyzerBlockSize) {
       if (isNaN(parseInt(k))) {
         this.blockSizeNames.push(k);
       }
@@ -620,9 +620,9 @@ class AppCtrl {
       e.preventDefault();
     });
 
-    var self = this;
+    let self = this;
     function toggle(name, event) {
-      var option = this.options[name];
+      let option = this.options[name];
       self[name] = !self[name];
       if (option.updatesImage) {
         self.drawImages();
@@ -633,8 +633,8 @@ class AppCtrl {
       event.preventDefault();
     }
 
-    for (var name in this.options) {
-      var option = this.options[name];
+    for (let name in this.options) {
+      let option = this.options[name];
       if (option.key) {
         Mousetrap.bind([option.key], toggle.bind(this, name));
       }
@@ -656,7 +656,7 @@ class AppCtrl {
       return;
     }
     function getMousePosition(canvas: HTMLCanvasElement, event: MouseEvent) {
-      var rect = canvas.getBoundingClientRect();
+      let rect = canvas.getBoundingClientRect();
       return new Vector(
         event.clientX - rect.left,
         event.clientY - rect.top
@@ -668,9 +668,9 @@ class AppCtrl {
   }
 
   getMI(): Vector {
-    var v = this.mousePosition;
-    var x = v.x / this.scale | 0;
-    var y = v.y / this.scale | 0;
+    let v = this.mousePosition;
+    let x = v.x / this.scale | 0;
+    let y = v.y / this.scale | 0;
     return new Vector(x / 8 | 0, y / 8 | 0);
   }
 
@@ -683,7 +683,7 @@ class AppCtrl {
   }
 
   openFile(path: string, next: () => any = null) {
-    var fileName = path.replace(/^.*[\\\/]/, '')
+    let fileName = path.replace(/^.*[\\\/]/, '')
     document.title = fileName;
     this.downloadFile(path, (buffer: Uint8Array) => {
       this.openFileBytes(buffer);
@@ -717,14 +717,14 @@ class AppCtrl {
   }
 
   downloadFile(path: string, next: (buffer: Uint8Array) => void) {
-    var xhr = new XMLHttpRequest();
-    var self = this;
+    let xhr = new XMLHttpRequest();
+    let self = this;
     self.progressMode = "determinate";
     xhr.open("GET", path, true);
     xhr.responseType = "arraybuffer";
     xhr.send();
     xhr.addEventListener("progress", (e) => {
-      var progress = (e.loaded / e.total) * 100;
+      let progress = (e.loaded / e.total) * 100;
       this.progressValue = progress;
       this.$scope.$apply();
     });
@@ -737,7 +737,7 @@ class AppCtrl {
   }
 
   uiAction(name) {
-    var file;
+    let file;
     switch (name) {
       case "open-file":
         angular.element(document.querySelector('#fileInput'))[0].click();
@@ -760,27 +760,27 @@ class AppCtrl {
   }
 
   updateSharingLink() {
-    var url = location.protocol + '//' + location.host + location.pathname;
-    var args = {
+    let url = location.protocol + '//' + location.host + location.pathname;
+    let args = {
       frameNumber: this.frameNumber
     };
-    for (var name in this.options) {
+    for (let name in this.options) {
       // Ignore default values.
       if (this[name] == this.options[name].default) {
         continue;
       }
       args[name] = this[name];
     }
-    var argList = [];
-    for (var arg in args) {
+    let argList = [];
+    for (let arg in args) {
       argList.push(arg + "=" + encodeURIComponent(args[arg]));
     }
-    var argListString = argList.join("&");
+    let argListString = argList.join("&");
     this.sharingLink = url + "?" + argListString;
   }
 
   uiResetLayers() {
-    for (var name in this.options) {
+    for (let name in this.options) {
       this[name] = this.options[name].default;
     }
     this.drawFrame();
@@ -815,15 +815,15 @@ class AppCtrl {
   }
 
   playFrame(count: number = 1) {
-    for (var i = 0; i < count; i++) {
-      var s = performance.now();
+    for (let i = 0; i < count; i++) {
+      let s = performance.now();
       if (this.aom.read_frame()) {
         return false;
       }
       this.lastDecodeFrameTime = performance.now() - s;
       this.frameNumber ++;
 
-      var tileGridSize = this.aom.getTileGridSizeLog2();
+      let tileGridSize = this.aom.getTileGridSizeLog2();
       this.tileGridSize.cols = 1 << tileGridSize.cols;
       this.tileGridSize.rows = 1 << tileGridSize.rows;
     }
@@ -854,9 +854,9 @@ class AppCtrl {
   }
 
   drawInfo() {
-    var mousePosition = this.mousePosition.clone().divideScalar(this.scale).snap();
-    var src = Rectangle.createRectangleCenteredAtPoint(mousePosition, 64, 64);
-    var dst = new Rectangle(0, 0, this.zoomSize * this.ratio, this.zoomSize * this.ratio);
+    let mousePosition = this.mousePosition.clone().divideScalar(this.scale).snap();
+    let src = Rectangle.createRectangleCenteredAtPoint(mousePosition, 64, 64);
+    let dst = new Rectangle(0, 0, this.zoomSize * this.ratio, this.zoomSize * this.ratio);
 
     this.zoomContext.clearRect(0, 0, dst.w, dst.h);
     if (this.showImage || this.showPredictedImage) {
@@ -882,7 +882,7 @@ class AppCtrl {
 
     // Draw Lines
     ctx.beginPath();
-    var lineOffset = getLineOffset(this.crosshairLineWidth);
+    let lineOffset = getLineOffset(this.crosshairLineWidth);
     ctx.translate(lineOffset, lineOffset)
     ctx.moveTo(dst.x, dst.y + dst.h / 2);
     ctx.lineTo(dst.x + dst.w, dst.y + dst.h / 2);
@@ -901,11 +901,11 @@ class AppCtrl {
     ctx.fillStyle = "#FFFFFF";
 
     ctx.lineWidth = 4;
-    var textHeight = 12 * this.ratio;
-    var textPadding = 4 * this.ratio;
+    let textHeight = 12 * this.ratio;
+    let textPadding = 4 * this.ratio;
     ctx.font = "bold " + textHeight + "px sans-serif";
 
-    var x, y, text;
+    let x, y, text;
     x = dst.x + dst.w / 2 + textPadding;
     y = textHeight + textPadding;
     text = String(center.y) + " (" + (center.y / this.blockSize | 0) + ")";
@@ -921,22 +921,22 @@ class AppCtrl {
   }
 
   drawSuperBlockGrid(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
-    var {cols, rows} = this.aom.getMIGridSize();
-    var scale = dst.w / src.w | 0;
-    var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
+    let {cols, rows} = this.aom.getMIGridSize();
+    let scale = dst.w / src.w | 0;
+    let scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
     ctx.save();
     ctx.globalAlpha = 1;
-    var lineOffset = getLineOffset(this.gridLineWidth);
+    let lineOffset = getLineOffset(this.gridLineWidth);
     ctx.translate(lineOffset, lineOffset);
     ctx.translate(-src.x * scale, -src.y * scale);
     ctx.beginPath();
-    for (var c = 0; c <= cols; c += 8) {
-      var offset = c * this.blockSize * scale;
+    for (let c = 0; c <= cols; c += 8) {
+      let offset = c * this.blockSize * scale;
       ctx.moveTo(offset, 0);
       ctx.lineTo(offset, scaledFrameSize.h);
     }
-    for (var r = 0; r <= rows; r += 8) {
-      var offset = r * this.blockSize * scale;
+    for (let r = 0; r <= rows; r += 8) {
+      let offset = r * this.blockSize * scale;
       ctx.moveTo(0, offset);
       ctx.lineTo(scaledFrameSize.w, offset);
     }
@@ -948,24 +948,24 @@ class AppCtrl {
   }
 
   drawTileGrid(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
-    var {cols, rows} = this.aom.getMIGridSize();
-    var {cols: tileColsLog2, rows: tileRowsLog2} = this.aom.getTileGridSizeLog2();
-    var scale = dst.w / src.w | 0;
-    var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
+    let {cols, rows} = this.aom.getMIGridSize();
+    let {cols: tileColsLog2, rows: tileRowsLog2} = this.aom.getTileGridSizeLog2();
+    let scale = dst.w / src.w | 0;
+    let scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
     ctx.save();
     ctx.globalAlpha = 1;
-    var lineOffset = getLineOffset(this.tileGridLineWidth);
+    let lineOffset = getLineOffset(this.tileGridLineWidth);
     ctx.translate(lineOffset, lineOffset);
     ctx.translate(-src.x * scale, -src.y * scale);
     ctx.beginPath();
 
-    for (var c = 0; c <= 1 << tileColsLog2; c ++) {
-      var offset = tileOffset(c, cols, tileColsLog2) * this.blockSize * scale;
+    for (let c = 0; c <= 1 << tileColsLog2; c ++) {
+      let offset = tileOffset(c, cols, tileColsLog2) * this.blockSize * scale;
       ctx.moveTo(offset, 0);
       ctx.lineTo(offset, scaledFrameSize.h);
     }
-    for (var r = 0; r <= 1 << tileRowsLog2; r ++) {
-      var offset = tileOffset(r, rows, tileRowsLog2) * this.blockSize * scale;
+    for (let r = 0; r <= 1 << tileRowsLog2; r ++) {
+      let offset = tileOffset(r, rows, tileRowsLog2) * this.blockSize * scale;
       ctx.moveTo(0, offset);
       ctx.lineTo(scaledFrameSize.w, offset);
     }
@@ -995,52 +995,52 @@ class AppCtrl {
   }
 
   drawDecodedImage(compositeOperation: string = "source-over") {
-    var Yp = this.aom.get_plane(0);
-    var Ys = this.aom.get_plane_stride(0);
-    var Up = this.aom.get_plane(1);
-    var Us = this.aom.get_plane_stride(1);
-    var Vp = this.aom.get_plane(2);
-    var Vs = this.aom.get_plane_stride(2);
+    let Yp = this.aom.get_plane(0);
+    let Ys = this.aom.get_plane_stride(0);
+    let Up = this.aom.get_plane(1);
+    let Us = this.aom.get_plane_stride(1);
+    let Vp = this.aom.get_plane(2);
+    let Vs = this.aom.get_plane_stride(2);
     this.drawImage(Yp, Ys, Up, Us, Vp, Vs, compositeOperation);
   }
 
   drawPredictedImage(compositeOperation: string = "source-over") {
-    var Yp = this.aom.get_predicted_plane_buffer(0);
-    var Ys = this.aom.get_predicted_plane_stride(0);
+    let Yp = this.aom.get_predicted_plane_buffer(0);
+    let Ys = this.aom.get_predicted_plane_stride(0);
 
-    var Up = this.aom.get_predicted_plane_buffer(1);
-    var Us = this.aom.get_predicted_plane_stride(1);
+    let Up = this.aom.get_predicted_plane_buffer(1);
+    let Us = this.aom.get_predicted_plane_stride(1);
 
-    var Vp = this.aom.get_predicted_plane_buffer(2);
-    var Vs = this.aom.get_predicted_plane_stride(2);
+    let Vp = this.aom.get_predicted_plane_buffer(2);
+    let Vs = this.aom.get_predicted_plane_stride(2);
     this.drawImage(Yp, Ys, Up, Us, Vp, Vs, compositeOperation);
   }
 
   drawImage(Yp, Ys, Up, Us, Vp, Vs, compositeOperation: string) {
-    var I = this.imageData.data;
-    var H = this.aom.HEAPU8;
+    let I = this.imageData.data;
+    let H = this.aom.HEAPU8;
 
-    var w = this.frameSize.w;
-    var h = this.frameSize.h;
+    let w = this.frameSize.w;
+    let h = this.frameSize.h;
 
 
-    var showY = this.showY;
-    var showU = this.showU;
-    var showV = this.showV;
+    let showY = this.showY;
+    let showU = this.showU;
+    let showV = this.showV;
 
-    for (var y = 0; y < h; y++) {
-      for (var x = 0; x < w; x++) {
-        var index = (Math.imul(y, w) + x) << 2;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let index = (Math.imul(y, w) + x) << 2;
 
-        var Y = showY ? H[Yp + Math.imul(y, Ys) + x] : 128;
-        var U = showU ? H[Up + Math.imul(y >> 1, Us) + (x >> 1)] : 128;
-        var V = showV ? H[Vp + Math.imul(y >> 1, Vs) + (x >> 1)] : 128;
+        let Y = showY ? H[Yp + Math.imul(y, Ys) + x] : 128;
+        let U = showU ? H[Up + Math.imul(y >> 1, Us) + (x >> 1)] : 128;
+        let V = showV ? H[Vp + Math.imul(y >> 1, Vs) + (x >> 1)] : 128;
 
-        var bgr = YUV2RGB(Y, U, V);
+        let bgr = YUV2RGB(Y, U, V);
 
-        var r = (bgr >>  0) & 0xFF;
-        var g = (bgr >>  8) & 0xFF;
-        var b = (bgr >> 16) & 0xFF;
+        let r = (bgr >>  0) & 0xFF;
+        let g = (bgr >>  8) & 0xFF;
+        let b = (bgr >> 16) & 0xFF;
 
         I[index + 0] = r;
         I[index + 1] = g;
@@ -1056,8 +1056,8 @@ class AppCtrl {
 
       this.displayContext.mozImageSmoothingEnabled = false;
       this.displayContext.imageSmoothingEnabled = false;
-      var dw = this.frameSize.w * this.scale * this.ratio;
-      var dh = this.frameSize.h * this.scale * this.ratio;
+      let dw = this.frameSize.w * this.scale * this.ratio;
+      let dh = this.frameSize.h * this.scale * this.ratio;
       this.displayContext.drawImage(this.compositionCanvas, 0, 0, dw, dh);
     }
 
@@ -1065,12 +1065,12 @@ class AppCtrl {
   }
 
   drawMain() {
-    var ctx = this.overlayContext;
-    var ratio = window.devicePixelRatio || 1;
+    let ctx = this.overlayContext;
+    let ratio = window.devicePixelRatio || 1;
     ctx.clearRect(0, 0, this.frameSize.w * this.scale * ratio, this.frameSize.h * this.scale * ratio);
 
-    var src = Rectangle.createRectangleFromSize(this.frameSize);
-    var dst = src.clone().multiplyScalar(this.scale * this.ratio);
+    let src = Rectangle.createRectangleFromSize(this.frameSize);
+    let dst = src.clone().multiplyScalar(this.scale * this.ratio);
 
     this.drawLayers(ctx, src, dst);
   }
@@ -1087,15 +1087,15 @@ class AppCtrl {
   }
 
   drawMode(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
-    var {cols, rows} = this.aom.getMIGridSize();
-    var scale = dst.w / src.w;
-    var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
+    let {cols, rows} = this.aom.getMIGridSize();
+    let scale = dst.w / src.w;
+    let scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
 
     ctx.save();
     ctx.lineWidth = this.modeLineWidth;
     ctx.strokeStyle = this.modeColor;
     ctx.globalAlpha = 0.5;
-    var lineOffset = getLineOffset(this.modeLineWidth);
+    let lineOffset = getLineOffset(this.modeLineWidth);
     ctx.translate(-src.x * scale, -src.y * scale);
 
     function line(x, y, dx, dy) {
@@ -1107,8 +1107,8 @@ class AppCtrl {
     }
 
     function mode(m: AOMAnalyzerPredictionMode, x, y, dx, dy) {
-      var hx = dx / 2;
-      var hy = dy / 2;
+      let hx = dx / 2;
+      let hy = dy / 2;
       switch (m) {
         case AOMAnalyzerPredictionMode.V_PRED:
           line(x + hx + lineOffset, y, 0, dy);
@@ -1141,11 +1141,11 @@ class AppCtrl {
       }
     }
 
-    var S = scale * this.blockSize;
+    let S = scale * this.blockSize;
 
-    for (var c = 0; c < cols; c++) {
-      for (var r = 0; r < rows; r++) {
-        var i = this.aom.get_mi_property(MIProperty.GET_MI_MODE, c, r);
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < rows; r++) {
+        let i = this.aom.get_mi_property(MIProperty.GET_MI_MODE, c, r);
         mode(i, c * S, r * S, S, S);
       }
     }
@@ -1154,20 +1154,20 @@ class AppCtrl {
   }
 
   drawBlockSplit(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
-    var {cols, rows} = this.aom.getMIGridSize();
-    var scale = dst.w / src.w;
-    var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
+    let {cols, rows} = this.aom.getMIGridSize();
+    let scale = dst.w / src.w;
+    let scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
 
     ctx.save();
     ctx.lineWidth = this.splitLineWidth;
     ctx.strokeStyle = this.splitColor;
     ctx.globalAlpha = 1;
-    var lineOffset = getLineOffset(this.splitLineWidth);
+    let lineOffset = getLineOffset(this.splitLineWidth);
     ctx.translate(lineOffset, lineOffset);
     ctx.translate(-src.x * scale, -src.y * scale);
     ctx.beginPath();
 
-    var sizes = [
+    let sizes = [
       [2, 2],
       [2, 3],
       [3, 2],
@@ -1183,7 +1183,7 @@ class AppCtrl {
       [6, 6, "rgba(33, 33, 33, .20)"]
     ];
 
-    var lineWidth = 1;
+    let lineWidth = 1;
     ctx.lineWidth = lineWidth;
 
     function split(x, y, dx, dy) {
@@ -1198,14 +1198,14 @@ class AppCtrl {
       ctx.stroke();
     }
 
-    var S = scale * this.blockSize;
+    let S = scale * this.blockSize;
     // Draw block sizes above 8x8.
-    for (var i = 3; i < sizes.length; i++) {
-      var dc = 1 << (sizes[i][0] - 3);
-      var dr = 1 << (sizes[i][1] - 3);
-      for (var c = 0; c < cols; c += dc) {
-        for (var r = 0; r < rows; r += dr) {
-          var t = this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, c, r);
+    for (let i = 3; i < sizes.length; i++) {
+      let dc = 1 << (sizes[i][0] - 3);
+      let dr = 1 << (sizes[i][1] - 3);
+      for (let c = 0; c < cols; c += dc) {
+        for (let r = 0; r < rows; r += dr) {
+          let t = this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, c, r);
           if (t == i) {
             split(c * S, r * S, dc * S, dr * S);
           }
@@ -1214,32 +1214,35 @@ class AppCtrl {
     }
 
     // Draw block sizes below 8x8.
-    for (var c = 0; c < cols; c ++) {
-      for (var r = 0; r < rows; r ++) {
-        var t = this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, c, r);
-        var x = c * S;
-        var y = r * S;
+    for (let c = 0; c < cols; c ++) {
+      for (let r = 0; r < rows; r ++) {
+        let t = this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, c, r);
+        let x = c * S;
+        let y = r * S;
         switch (t) {
-          case 0:
-            var dx = S >> 1;
-            var dy = S >> 1;
+          case 0: {
+            let dx = S >> 1;
+            let dy = S >> 1;
             split(x,      y,      dx, dy);
             split(x + dx, y,      dx, dy);
             split(x,      y + dy, dx, dy);
             split(x + dx, y + dy, dx, dy);
             break;
-          case 1:
-            var dx = S >> 1;
-            var dy = S;
+          }
+          case 1: {
+            let dx = S >> 1;
+            let dy = S;
             split(x,      y, dx, dy);
             split(x + dx, y, dx, dy);
             break;
-          case 2:
-            var dx = S;
-            var dy = S >> 1;
+          }
+          case 2: {
+            let dx = S;
+            let dy = S >> 1;
             split(x, y,      dx, dy);
             split(x, y + dy, dx, dy);
             break;
+          }
         }
       }
     }
@@ -1250,19 +1253,19 @@ class AppCtrl {
   }
 
   drawTransformSplit(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
-    var {cols, rows} = this.aom.getMIGridSize();
-    var scale = dst.w / src.w;
-    var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
+    let {cols, rows} = this.aom.getMIGridSize();
+    let scale = dst.w / src.w;
+    let scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
 
     ctx.save();
     ctx.lineWidth = this.transformLineWidth;
     ctx.strokeStyle = this.transformColor;
     ctx.globalAlpha = 1;
-    var lineOffset = getLineOffset(this.transformLineWidth);
+    let lineOffset = getLineOffset(this.transformLineWidth);
     ctx.translate(lineOffset, lineOffset);
     ctx.translate(-src.x * scale, -src.y * scale);
     ctx.beginPath();
-    var lineWidth = 1;
+    let lineWidth = 1;
     ctx.lineWidth = lineWidth;
 
     function split(x, y, dx, dy) {
@@ -1278,12 +1281,12 @@ class AppCtrl {
     }
 
     // Draw >= 8x8 transforms
-    var S = scale * this.blockSize;
-    for (var i = 1; i < 4; i++) {
-      var side = 1 << (i - 1);
-      for (var c = 0; c < cols; c += side) {
-        for (var r = 0; r < rows; r += side) {
-          var t = this.aom.get_mi_property(MIProperty.GET_MI_TRANSFORM_SIZE, c, r);
+    let S = scale * this.blockSize;
+    for (let i = 1; i < 4; i++) {
+      let side = 1 << (i - 1);
+      for (let c = 0; c < cols; c += side) {
+        for (let r = 0; r < rows; r += side) {
+          let t = this.aom.get_mi_property(MIProperty.GET_MI_TRANSFORM_SIZE, c, r);
           if (t == i) {
             split(c * S, r * S, side * S, side * S);
           }
@@ -1292,14 +1295,14 @@ class AppCtrl {
     }
 
     // Draw 4x4 transforms
-    for (var c = 0; c < cols; c++) {
-      for (var r = 0; r < rows; r++) {
-        var t = this.aom.get_mi_property(MIProperty.GET_MI_TRANSFORM_SIZE, c, r);
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < rows; r++) {
+        let t = this.aom.get_mi_property(MIProperty.GET_MI_TRANSFORM_SIZE, c, r);
         if (t == 0) {
-          var x = c * S;
-          var y = r * S;
-          var dx = S >> 1;
-          var dy = S >> 1;
+          let x = c * S;
+          let y = r * S;
+          let dx = S >> 1;
+          let dy = S >> 1;
           split(x,      y,      dx, dy);
           split(x + dx, y,      dx, dy);
           split(x,      y + dy, dx, dy);
@@ -1314,15 +1317,15 @@ class AppCtrl {
   }
 
   drawFillBlock(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle, setFillStyle: (c: number, r: number) => boolean) {
-    var {cols, rows} = this.aom.getMIGridSize();
-    var scale = dst.w / src.w;
-    var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
+    let {cols, rows} = this.aom.getMIGridSize();
+    let scale = dst.w / src.w;
+    let scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
     ctx.save();
     ctx.globalAlpha = 0.75;
     ctx.translate(-src.x * scale, -src.y * scale);
-    var S = scale * this.blockSize;
-    for (var c = 0; c < cols; c++) {
-      for (var r = 0; r < rows; r++) {
+    let S = scale * this.blockSize;
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < rows; r++) {
         if (setFillStyle(c, r)) {
           ctx.fillRect(c * S, r * S, S, S);
         }
@@ -1333,7 +1336,7 @@ class AppCtrl {
 
   drawDering(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
     this.drawFillBlock(ctx, src, dst, (c, r) => {
-      var i = this.aom.get_mi_property(MIProperty.GET_MI_DERING_GAIN, c, r);
+      let i = this.aom.get_mi_property(MIProperty.GET_MI_DERING_GAIN, c, r);
       if (i == 0) return false;
       ctx.fillStyle = "rgba(33,33,33," + (i / 4) + ")";
       return true;
@@ -1342,7 +1345,7 @@ class AppCtrl {
 
   drawSkip(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
     this.drawFillBlock(ctx, src, dst, (c, r) => {
-      var i = this.aom.get_mi_property(MIProperty.GET_MI_SKIP, c, r);
+      let i = this.aom.get_mi_property(MIProperty.GET_MI_SKIP, c, r);
       if (i == 0) return false;
       ctx.fillStyle = this.skipColor;
       return true;
@@ -1350,14 +1353,14 @@ class AppCtrl {
   }
 
   getMotionVector(c: number, r: number, i: number): Vector {
-    var i = this.aom.get_mi_property(MIProperty.GET_MI_MV, c, r, i);
-    var y = (i >> 16);
-    var x = (((i & 0xFFFF) << 16) >> 16);
+    let mv = this.aom.get_mi_property(MIProperty.GET_MI_MV, c, r, i);
+    let y = (mv >> 16);
+    let x = (((mv & 0xFFFF) << 16) >> 16);
     return new Vector(x, y);
   }
 
   uiBlockInfo(name: string) {
-    var mi = this.getMI();
+    let mi = this.getMI();
     switch (name) {
       case "blockSize":
         return AOMAnalyzerBlockSize[this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, mi.x, mi.y)];
@@ -1382,27 +1385,27 @@ class AppCtrl {
   }
 
   drawMotionVectors(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
-    var {cols, rows} = this.aom.getMIGridSize();
-    var scale = dst.w / src.w;
-    var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
+    let {cols, rows} = this.aom.getMIGridSize();
+    let scale = dst.w / src.w;
+    let scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
 
     ctx.save();
     ctx.globalAlpha = 0.75;
     ctx.translate(-src.x * scale, -src.y * scale);
-    var S = scale * this.blockSize;
+    let S = scale * this.blockSize;
 
-    var gradient = tinygradient([
+    let gradient = tinygradient([
       {color: tinycolor(this.mvColor).brighten(50), pos: 0},
       {color: tinycolor(this.mvColor), pos: 1}
     ]);
 
-    var colorRange = gradient.rgb(32);
+    let colorRange = gradient.rgb(32);
 
-    for (var c = 0; c < cols; c++) {
-      for (var r = 0; r < rows; r++) {
-        var v = this.getMotionVector(c, r, 0);
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < rows; r++) {
+        let v = this.getMotionVector(c, r, 0);
         v.clampLength(0, 31);
-        var l = v.length() | 0;
+        let l = v.length() | 0;
         ctx.fillStyle = colorRange[l | 0];
         ctx.fillRect(c * S, r * S, S, S);
       }
@@ -1411,9 +1414,9 @@ class AppCtrl {
   }
 
   drawVector(a: Vector, b: Vector) {
-    var ctx = this.overlayContext;
-    var c = b.clone().sub(a);
-    var length = c.length();
+    let ctx = this.overlayContext;
+    let c = b.clone().sub(a);
+    let length = c.length();
 
     c.add(a);
     ctx.beginPath();
@@ -1425,9 +1428,9 @@ class AppCtrl {
   }
 
   drawVector3(a: Vector, b: Vector) {
-    var ctx = this.overlayContext;
-    var c = b.clone().sub(a);
-    var length = c.length();
+    let ctx = this.overlayContext;
+    let c = b.clone().sub(a);
+    let length = c.length();
 
     c.add(a);
 
@@ -1448,9 +1451,9 @@ class AppCtrl {
   }
 
   drawVector2(p1: Vector, p2: Vector) {
-    var ctx = this.overlayContext;
+    let ctx = this.overlayContext;
     ctx.save();
-    var dist = Math.sqrt((p2.x - p1.x) * (p2.x - p1.x) + (p2.y - p1.y) * (p2.y - p1.y));
+    let dist = Math.sqrt((p2.x - p1.x) * (p2.x - p1.x) + (p2.y - p1.y) * (p2.y - p1.y));
 
     ctx.beginPath();
     ctx.lineWidth = 1;
@@ -1458,11 +1461,11 @@ class AppCtrl {
     ctx.lineTo(p2.x, p2.y);
     ctx.stroke();
 
-    var angle = Math.acos((p2.y - p1.y) / dist);
+    let angle = Math.acos((p2.y - p1.y) / dist);
 
     if (p2.x < p1.x) angle = 2 * Math.PI - angle;
 
-    var size = 2 * Math.min(this.scale, 4);
+    let size = 2 * Math.min(this.scale, 4);
 
     ctx.beginPath();
     ctx.translate(p2.x, p2.y);
@@ -1487,31 +1490,31 @@ class AppCtrl {
   }
 
   drawMotionVectors2() {
-    var ctx = this.overlayContext;
-    var {cols, rows} = this.aom.getMIGridSize();
-    var s = this.scale * this.ratio;
+    let ctx = this.overlayContext;
+    let {cols, rows} = this.aom.getMIGridSize();
+    let s = this.scale * this.ratio;
     ctx.globalAlpha = 0.5;
 
 
-    var gradient = tinygradient([
+    let gradient = tinygradient([
       {color: tinycolor(this.mvColor).brighten(50), pos: 0},
       {color: tinycolor(this.mvColor), pos: 1}
     ]);
 
-    var colorRange = gradient.rgb(32);
+    let colorRange = gradient.rgb(32);
 
-    for (var c = 0; c < cols; c++) {
-      for (var r = 0; r < rows; r++) {
-        var v = this.getMotionVector(c, r, 0);
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < rows; r++) {
+        let v = this.getMotionVector(c, r, 0);
         v.clampLength(0, 31);
-        var l = v.length() | 0;
+        let l = v.length() | 0;
         ctx.fillStyle = colorRange[l | 0];
         ctx.fillRect(c * 8 * s, r * 8 * s, 8 * s, 8 * s);
 
-        // var offset = s * 8 / 2;
-        // var a = new Vector(c * 8 * s + offset, r * 8 * s + offset);
-        // var v = new Vector(x, y).divideScalar(8).multiplyScalar(s);
-        // var l = v.length() | 0;
+        // let offset = s * 8 / 2;
+        // let a = new Vector(c * 8 * s + offset, r * 8 * s + offset);
+        // let v = new Vector(x, y).divideScalar(8).multiplyScalar(s);
+        // let l = v.length() | 0;
         // v.clampLength(0, 31);
 
         // this.drawVector3(
@@ -1535,21 +1538,21 @@ function clamp(v, a, b) {
 }
 
 function YUV2RGB(yValue, uValue, vValue) {
-  var rTmp = yValue + (1.370705 * (vValue - 128));
-  var gTmp = yValue - (0.698001 * (vValue - 128)) - (0.337633 * (uValue - 128));
-  var bTmp = yValue + (1.732446 * (uValue - 128));
-  var r = clamp(rTmp | 0, 0, 255) | 0;
-  var g = clamp(gTmp | 0, 0, 255) | 0;
-  var b = clamp(bTmp | 0, 0, 255) | 0;
+  let rTmp = yValue + (1.370705 * (vValue - 128));
+  let gTmp = yValue - (0.698001 * (vValue - 128)) - (0.337633 * (uValue - 128));
+  let bTmp = yValue + (1.732446 * (uValue - 128));
+  let r = clamp(rTmp | 0, 0, 255) | 0;
+  let g = clamp(gTmp | 0, 0, 255) | 0;
+  let b = clamp(bTmp | 0, 0, 255) | 0;
   return (b << 16) | (g << 8) | (r << 0);
 }
 
 function getUrlParameters(): any {
-  var url = window.location.search.substring(1);
+  let url = window.location.search.substring(1);
   url = url.replace(/\/$/, ""); // Replace / at the end that gets inserted by browsers.
-  var params = {};
+  let params = {};
   url.split('&').forEach(function (s) {
-    var t = s.split('=');
+    let t = s.split('=');
     params[t[0]] = decodeURIComponent(t[1]);
   });
   return params;
@@ -1565,16 +1568,16 @@ angular
 .filter('keyboardShortcut', function($window) {
   return function(str) {
     if (!str) return;
-    var keys = str.split('-');
-    var isOSX = /Mac OS X/.test($window.navigator.userAgent);
-    var seperator = (!isOSX || keys.length > 2) ? '+' : '';
-    var abbreviations = {
+    let keys = str.split('-');
+    let isOSX = /Mac OS X/.test($window.navigator.userAgent);
+    let seperator = (!isOSX || keys.length > 2) ? '+' : '';
+    let abbreviations = {
       M: isOSX ? '⌘' : 'Ctrl',
       A: isOSX ? 'Option' : 'Alt',
       S: 'Shift'
     };
     return keys.map(function(key, index) {
-      var last = index == keys.length - 1;
+      let last = index == keys.length - 1;
       return last ? key : abbreviations[key];
     }).join(seperator);
   };

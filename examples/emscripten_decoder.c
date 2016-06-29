@@ -128,10 +128,13 @@ void init_analyzer() {
   analyzer_data.mi_grid.buffer = aom_malloc(sizeof(AV1AnalyzerMI) * mi_count);
   analyzer_data.mi_grid.size = mi_count;
 
-  int size = aligned_width * aligned_height * 2;
-  analyzer_data.predicted_image.planes[0].size = size;
-  analyzer_data.predicted_image.planes[0].stride = aligned_width;
-  analyzer_data.predicted_image.planes[0].buffer = aom_malloc(size);
+  // TOOD: Allocate exactly as much as is needed. Right now we're being very sloppy here.
+  for (int i = 0; i < 4; i++) {
+    int size = aligned_width * aligned_height * 2;
+    analyzer_data.predicted_image.planes[i].size = size;
+    analyzer_data.predicted_image.planes[i].stride = aligned_width;
+    analyzer_data.predicted_image.planes[i].buffer = aom_malloc(size);
+  }
 }
 
 void dump_analyzer() {
@@ -141,10 +144,10 @@ void dump_analyzer() {
   int r, c;
   for (r = 0; r < mi_rows; ++r) {
     for (c = 0; c < mi_cols; ++c) {
-      AV1AnalyzerMI mi = analyzer_data.mi_grid.buffer[r * mi_cols + c];
+      // AV1AnalyzerMI mi = analyzer_data.mi_grid.buffer[r * mi_cols + c];
       // printf("%d ", mi.mode);
       // printf("%3d:%-3d ", abs(mv.row), abs(mv.col));
-       // printf("%d:%d ", mv.row, mv.col);
+      // printf("%d:%d ", mv.row, mv.col);
       // ...
     }
     // printf("\n");

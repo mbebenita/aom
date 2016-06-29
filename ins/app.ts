@@ -359,7 +359,7 @@ class AppCtrl {
       description: "Show Predicted Image",
       detail: "Shows predicted image.",
       updatesImage: true,
-      default: true
+      default: false
     },
     showSuperBlockGrid: {
       key: "b",

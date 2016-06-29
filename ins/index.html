@@ -246,6 +246,15 @@
             <div class="label">Sharing Link</div>
             <input ng-model="vm.sharingLink" style="width: 100%; padding: 6px; color: lightslategrey;" select-on-click>
           </div>
+
+          <div>
+            <h1 class="title">Decoder</h1>
+            <md-select ng-model="vm.selectedDecoder" ng-change="vm.uiChangeDecoder()">
+              <md-option ng-repeat="(key, value) in vm.decoders" value="{{key}}">
+                {{value.description}}
+              </md-option>
+            </md-select>
+          </div>
         </md-content>
       </md-sidenav>
       <md-content flex layout="row" style="overflow: scroll;">
@@ -294,9 +303,6 @@
   <script src="lib/jsGradient.js"></script>
   <script src="app.js"></script>
   <script src="lib/mousetrap.min.js"></script>
-
-  <script src="bin/decoder.js"></script>
-
 </body>
 
 </html>

@@ -301,8 +301,24 @@ class Vector {
   }
 }
 
+interface Decoder {
+  description: string;
+  path: string;
+}
+
 class AppCtrl {
   aom: AOM = null;
+  decoders = {
+    default: {
+      description: "Default",
+      path: "bin/decoder.js"
+    },
+    dering: {
+      description: "Deringing",
+      path: "bin/dering-decoder.js"
+    }
+  };
+  selectedDecoder: string;
   frameSize: Size = new Size(128, 128);
   tileGridSize: GridSize = new GridSize(0, 0);
   fileSize: number = 0;
@@ -392,13 +408,13 @@ class AppCtrl {
       default: false
     },
     showMotionVectors: {
-      key: "v",
+      key: "m",
       description: "Show Motion Vectors",
       detail: "Shows motion vectors, darker colors represent longer vectors.",
       default: false
     },
     showMode: {
-      key: "m",
+      key: "o",
       description: "Show Mode",
       detail: "Shows prediction modes.",
       default: false
@@ -514,7 +530,6 @@ class AppCtrl {
 
   constructor($scope, $interval) {
     let self = this;
-
     this.$scope = $scope;
     // File input types don't have angular bindings, so we need set the
     // event handler on the scope object.
@@ -566,18 +581,20 @@ class AppCtrl {
         this[name] = parameters[name] == "true";
       }
     }
-    let frames = parseInt(parameters.frameNumber) || 1;
-
-    this.aom = new AOM();
-    let file = "media/crosswalk.ivf";
-    this.openFile(file, () => {
-      this.playFrameAsync(frames, () => {
-        this.drawFrame();
-      })
-    });
 
     this.installKeyboardShortcuts();
     this.initEnums();
+    let frames = parseInt(parameters.frameNumber) || 1;
+
+    this.loadDecoder("default", () => {
+      this.aom = new AOM();
+      let file = "media/crosswalk.ivf";
+      this.openFile(file, () => {
+        this.playFrameAsync(frames, () => {
+          this.drawFrame();
+        })
+      });
+    });
   }
 
   initEnums() {
@@ -672,6 +689,21 @@ class AppCtrl {
     let x = v.x / this.scale | 0;
     let y = v.y / this.scale | 0;
     return new Vector(x / 8 | 0, y / 8 | 0);
+  }
+
+  loadDecoder(decoder: string, next: () => any) {
+    this.selectedDecoder = decoder;
+    var s = document.createElement('script');
+    s.onload = next;
+    s.setAttribute('src', this.decoders[decoder].path);
+    document.body.appendChild(s);
+  }
+
+  uiChangeDecoder() {
+    alert("NYI");
+    this.loadDecoder(this.selectedDecoder, () => {
+      // ...
+    });
   }
 
   openFileBytes(buffer: Uint8Array) {
@@ -1359,7 +1391,10 @@ class AppCtrl {
     return new Vector(x, y);
   }
 
-  uiBlockInfo(name: string) {
+  uiBlockInfo(name: string): string | number {
+    if (!this.aom) {
+      return;
+    }
     let mi = this.getMI();
     switch (name) {
       case "blockSize":

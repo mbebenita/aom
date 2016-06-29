@@ -4,6 +4,19 @@ declare let Mousetrap: any;
 declare let tinycolor: any;
 declare let tinygradient: any;
 
+interface Window {
+  Module: any;
+}
+
+interface CanvasRenderingContext2D {
+  mozImageSmoothingEnabled: boolean;
+  imageSmoothingEnabled;
+}
+
+interface Math {
+  imul: (a: number, b: number) => number;
+}
+
 let colors = [
   "#E85EBE", "#009BFF", "#00FF00", "#0000FF", "#FF0000", "#01FFFE", "#FFA6FE",
   "#FFDB66", "#006401", "#010067", "#95003A", "#007DB5", "#FF00F6", "#FFEEE8",
@@ -1233,8 +1246,8 @@ class AppCtrl {
     let S = scale * this.blockSize;
     // Draw block sizes above 8x8.
     for (let i = 3; i < sizes.length; i++) {
-      let dc = 1 << (sizes[i][0] - 3);
-      let dr = 1 << (sizes[i][1] - 3);
+      let dc = 1 << (<number>sizes[i][0] - 3);
+      let dr = 1 << (<number>sizes[i][1] - 3);
       for (let c = 0; c < cols; c += dc) {
         for (let r = 0; r < rows; r += dr) {
           let t = this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, c, r);

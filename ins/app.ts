@@ -318,6 +318,7 @@ class AppCtrl {
   showSuperBlockGrid: boolean = false;
   showTileGrid: boolean = false;
   showBlockSplit: boolean = false;
+  showTransformSplit: boolean = false;
   showMotionVectors: boolean = false;
   showDering: boolean = false;
   showMode: boolean = false;
@@ -367,7 +368,7 @@ class AppCtrl {
       default: false
     },
     showTileGrid: {
-      key: "t",
+      key: "l",
       description: "Show Tile Grid",
       detail: "Shows tile grid.",
       default: false
@@ -376,6 +377,12 @@ class AppCtrl {
       key: "s",
       description: "Show Split Grid",
       detail: "Shows block partitions.",
+      default: false
+    },
+    showTransformSplit: {
+      key: "t",
+      description: "Show Transform Grid",
+      detail: "Shows transform blocks.",
       default: false
     },
     showDering: {
@@ -486,6 +493,7 @@ class AppCtrl {
   gridColor = "rgba(55,55,55,1)";
   tileGridColor = "hsl(0, 100%, 69%)";
   splitColor = "rgba(33,33,33,1)";
+  transformColor = "rgba(255,0,0,1)";
 
   crosshairLineWidth = 2;
   crosshairColor = "rgba(33,33,33,0.5)";
@@ -493,6 +501,7 @@ class AppCtrl {
   gridLineWidth = 3;
   tileGridLineWidth = 5;
   splitLineWidth = 1;
+  transformLineWidth = 1;
   modeLineWidth = 2;
   blockSize = 8;
 
@@ -1071,6 +1080,7 @@ class AppCtrl {
     this.showDering && this.drawDering(ctx, src, dst);
     this.showMode && this.drawMode(ctx, src, dst);
     this.showSkip && this.drawSkip(ctx, src, dst);
+    this.showTransformSplit && this.drawTransformSplit(ctx, src, dst);
     this.showBlockSplit && this.drawBlockSplit(ctx, src, dst);
     this.showSuperBlockGrid && this.drawSuperBlockGrid(ctx, src, dst);
     this.showTileGrid && this.drawTileGrid(ctx, src, dst);
@@ -1230,6 +1240,70 @@ class AppCtrl {
             split(x, y,      dx, dy);
             split(x, y + dy, dx, dy);
             break;
+        }
+      }
+    }
+
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  drawTransformSplit(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
+    var {cols, rows} = this.aom.getMIGridSize();
+    var scale = dst.w / src.w;
+    var scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
+
+    ctx.save();
+    ctx.lineWidth = this.transformLineWidth;
+    ctx.strokeStyle = this.transformColor;
+    ctx.globalAlpha = 1;
+    var lineOffset = getLineOffset(this.transformLineWidth);
+    ctx.translate(lineOffset, lineOffset);
+    ctx.translate(-src.x * scale, -src.y * scale);
+    ctx.beginPath();
+    var lineWidth = 1;
+    ctx.lineWidth = lineWidth;
+
+    function split(x, y, dx, dy) {
+      ctx.beginPath();
+      ctx.save();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + dx, y);
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y + dy);
+      ctx.restore();
+      ctx.closePath();
+      ctx.stroke();
+    }
+
+    // Draw >= 8x8 transforms
+    var S = scale * this.blockSize;
+    for (var i = 1; i < 4; i++) {
+      var side = 1 << (i - 1);
+      for (var c = 0; c < cols; c += side) {
+        for (var r = 0; r < rows; r += side) {
+          var t = this.aom.get_mi_property(MIProperty.GET_MI_TRANSFORM_SIZE, c, r);
+          if (t == i) {
+            split(c * S, r * S, side * S, side * S);
+          }
+        }
+      }
+    }
+
+    // Draw 4x4 transforms
+    for (var c = 0; c < cols; c++) {
+      for (var r = 0; r < rows; r++) {
+        var t = this.aom.get_mi_property(MIProperty.GET_MI_TRANSFORM_SIZE, c, r);
+        if (t == 0) {
+          var x = c * S;
+          var y = r * S;
+          var dx = S >> 1;
+          var dy = S >> 1;
+          split(x,      y,      dx, dy);
+          split(x + dx, y,      dx, dy);
+          split(x,      y + dy, dx, dy);
+          split(x + dx, y + dy, dx, dy);
         }
       }
     }

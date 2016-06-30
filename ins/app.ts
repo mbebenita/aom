@@ -690,7 +690,7 @@ class AppCtrl {
       event.preventDefault();
     }
 
-    var installedKeys = {};
+    let installedKeys = {};
     for (let name in this.options) {
       let option = this.options[name];
       if (option.key) {
@@ -731,6 +731,10 @@ class AppCtrl {
 
   getMIBlockSize(c: number, r: number): Size {
     let miBlockSize = this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, c, r);
+    if (miBlockSize >= blockSizes.length) {
+      // TODO: This should not happen, figure out what is going on.
+      return new Size(0, 0);
+    }
     let w = 1 << blockSizes[miBlockSize][0];
     let h = 1 << blockSizes[miBlockSize][1];
     return new Size(w, h);
@@ -758,13 +762,13 @@ class AppCtrl {
   }
 
   getMIBits(c: number, r: number): number {
-    var mi = this.getMI(c, r);
+    let mi = this.getMI(c, r);
     return this.aom.get_mi_property(MIProperty.GET_MI_BITS, mi.x, mi.y);
   }
 
   loadDecoder(decoder: string, next: () => any) {
     this.selectedDecoder = decoder;
-    var s = document.createElement('script');
+    let s = document.createElement('script');
     s.onload = next;
     s.setAttribute('src', this.decoders[decoder].path);
     document.body.appendChild(s);
@@ -1459,15 +1463,20 @@ class AppCtrl {
     });
   }
 
+  getMIBlockBitsPerPixel(c: number, r: number): number {
+    let blockSize = this.getMIBlockSize(c, r);
+    let blockArea = blockSize.w * blockSize.h;
+    let miBits = this.getMIBits(c, r);
+    return miBits / blockArea;
+  }
+
   drawBits(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
     let {cols, rows} = this.aom.getMIGridSize();
-    let miTotalBits = 0;
-    let miMaxBits = 0;
+    let miMaxBitsPerPixel = 0;
     for (let c = 0; c < cols; c++) {
       for (let r = 0; r < rows; r++) {
-        let miBits = this.getMIBits(c, r);
-        miTotalBits += miBits;
-        miMaxBits = Math.max(miMaxBits, miBits);
+        let miBitsPerPixel = this.getMIBlockBitsPerPixel(c, r);
+        miMaxBitsPerPixel = Math.max(miMaxBitsPerPixel, miBitsPerPixel);
       }
     }
     let gradient = tinygradient([
@@ -1475,14 +1484,9 @@ class AppCtrl {
       {color: tinycolor("#9400D3"), pos: 1}
     ]);
     let colorRange = gradient.rgb(32).map(x => x.toString());
-
-    let miAverageBits = miTotalBits / (cols * rows);
     this.drawFillBlock(ctx, src, dst, (miCol, miRow, col, row) => {
-      let miBits = this.getMIBits(miCol, miRow);
-      if (miBits <= 0) return false;
-      // ctx.fillStyle = colors[(miBits / miMaxBits) * colors.length | 0];
-      var color = colorRange[((miBits / miMaxBits) * (colorRange.length - 1)) | 0];
-      // ctx.fillStyle = "rgba(33,33,33," + (miBits / miMaxBits) + ")";
+      let miBitsPerPixel = this.getMIBlockBitsPerPixel(miCol, miRow);
+      let color = colorRange[((miBitsPerPixel / miMaxBitsPerPixel) * (colorRange.length - 1)) | 0];
       ctx.fillStyle = color;
       return true;
     });

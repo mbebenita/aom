@@ -667,7 +667,7 @@ class AppCtrl {
 
     this.loadDecoder("default", () => {
       this.aom = new AOM();
-      let file = "media/crosswalk.ivf";
+      let file = "media/default.ivf";
       this.openFile(file, () => {
         this.playFrameAsync(frames, () => {
           this.drawFrame();

@@ -127,16 +127,16 @@ let blockSizes = [
   [2, 2],
   [2, 3],
   [3, 2],
-  [3, 3, "rgba(33, 33, 33, .02)"],
-  [3, 4, "rgba(33, 33, 33, .04)"],
-  [4, 3, "rgba(33, 33, 33, .06)"],
-  [4, 4, "rgba(33, 33, 33, .08)"],
-  [4, 5, "rgba(33, 33, 33, .10)"],
-  [5, 4, "rgba(33, 33, 33, .12)"],
-  [5, 5, "rgba(33, 33, 33, .14)"],
-  [5, 6, "rgba(33, 33, 33, .16)"],
-  [6, 5, "rgba(33, 33, 33, .18)"],
-  [6, 6, "rgba(33, 33, 33, .20)"]
+  [3, 3],
+  [3, 4],
+  [4, 3],
+  [4, 4],
+  [4, 5],
+  [5, 4],
+  [5, 5],
+  [5, 6],
+  [6, 5],
+  [6, 6]
 ];
 
 interface AOMInternal {
@@ -355,22 +355,22 @@ class AppCtrl {
   ratio: number = 1;
   scale: number = 1;
 
-  showY: boolean = true;
-  showU: boolean = true;
-  showV: boolean = true;
-  showImage: boolean = true;
-  showPredictedImage: boolean = false;
+  showY: boolean;
+  showU: boolean;
+  showV: boolean;
+  showImage: boolean;
+  showPredictedImage: boolean;
 
-  showSuperBlockGrid: boolean = false;
-  showTileGrid: boolean = false;
-  showBlockSplit: boolean = false;
-  showTransformSplit: boolean = false;
-  showMotionVectors: boolean = false;
-  showDering: boolean = false;
-  showMode: boolean = false;
-  showBits: boolean = false;
-  showSkip: boolean = false;
-  showInfo: boolean = true;
+  showSuperBlockGrid: boolean;
+  showTileGrid: boolean;
+  showBlockSplit: boolean;
+  showTransformSplit: boolean;
+  showMotionVectors: boolean;
+  showDering: boolean;
+  showMode: boolean;
+  showBits: boolean;
+  showSkip: boolean;
+  showInfo: boolean;
 
   options = {
     showY: {
@@ -466,7 +466,7 @@ class AppCtrl {
       key: "tab",
       description: "Show Info",
       detail: "Shows mode info details.",
-      default: true
+      default: window.innerWidth > 1024
     },
     zoomLock: {
       key: "z",
@@ -729,11 +729,26 @@ class AppCtrl {
     this.uiApply();
   }
 
+  getMIBlockSize(c: number, r: number): Size {
+    let miBlockSize = this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, c, r);
+    let w = 1 << blockSizes[miBlockSize][0];
+    let h = 1 << blockSizes[miBlockSize][1];
+    return new Size(w, h);
+  }
+
+  /**
+   * Gets the coordinates of the MI block under the mousedown.
+   */
   getMI(): Vector {
     let v = this.mousePosition;
-    let x = v.x / this.scale | 0;
-    let y = v.y / this.scale | 0;
-    return new Vector(x / 8 | 0, y / 8 | 0);
+    let c = (v.x / this.scale) >> 3;
+    let r = (v.y / this.scale) >> 3;
+    let blockSize = this.getMIBlockSize(c, r);
+    // Get the coordinates of the parent MI block if this block is
+    // not an 8x8 block.
+    c = c & ~((blockSize.w - 1) >> 3);
+    r = r & ~((blockSize.h - 1) >> 3);
+    return new Vector(c, r);
   }
 
   loadDecoder(decoder: string, next: () => any) {
@@ -1263,8 +1278,8 @@ class AppCtrl {
     let S = scale * this.blockSize;
     // Draw block sizes above 8x8.
     for (let i = 3; i < blockSizes.length; i++) {
-      let dc = 1 << (<number>blockSizes[i][0] - 3);
-      let dr = 1 << (<number>blockSizes[i][1] - 3);
+      let dc = 1 << (blockSizes[i][0] - 3);
+      let dr = 1 << (blockSizes[i][1] - 3);
       for (let c = 0; c < cols; c += dc) {
         for (let r = 0; r < rows; r += dr) {
           let t = this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, c, r);
@@ -1389,8 +1404,8 @@ class AppCtrl {
     for (let c = 0; c < cols; c++) {
       for (let r = 0; r < rows; r++) {
         let miBlockSize = this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, c, r);
-        let w = scale * (1 << <number>blockSizes[miBlockSize][0]);
-        let h = scale * (1 << <number>blockSizes[miBlockSize][1]);
+        let w = scale * (1 << blockSizes[miBlockSize][0]);
+        let h = scale * (1 << blockSizes[miBlockSize][1]);
         switch (miBlockSize) {
           case AOMAnalyzerBlockSize.BLOCK_4X4:
             setFillStyle(c, r, 0, 0) && ctx.fillRect(c * s,     r * s,     w, h);

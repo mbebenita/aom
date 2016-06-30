@@ -178,6 +178,8 @@ int open_file(char *file) {
   return EXIT_SUCCESS;
 }
 
+void clear_mi_bits();
+
 EMSCRIPTEN_KEEPALIVE
 int read_frame() {
   if (!aom_video_reader_read_frame(reader)) {
@@ -189,6 +191,7 @@ int read_frame() {
   size_t frame_size = 0;
   const unsigned char *frame =
       aom_video_reader_get_frame(reader, &frame_size);
+  clear_mi_bits();
   if (aom_codec_decode(&codec, frame, (unsigned int)frame_size, NULL, 0) != AOM_CODEC_OK) {
     die_codec(&codec, "Failed to decode frame.");
   }
@@ -228,7 +231,8 @@ typedef enum {
   GET_MI_BLOCK_SIZE,
   GET_MI_TRANSFORM_TYPE,
   GET_MI_TRANSFORM_SIZE,
-  GET_MI_DERING_GAIN
+  GET_MI_DERING_GAIN,
+  GET_MI_BITS
 } GetMIProperty;
 
 EMSCRIPTEN_KEEPALIVE
@@ -252,6 +256,22 @@ int get_mi_property(GetMIProperty v, int c, int r, int i) {
       return mi->transform_size;
     case GET_MI_DERING_GAIN:
       return mi->dering_gain;
+    case GET_MI_BITS:
+      return mi->bits;
+  }
+}
+
+EMSCRIPTEN_KEEPALIVE
+void clear_mi_bits() {
+  const int mi_rows = analyzer_data.mi_rows;
+  const int mi_cols = analyzer_data.mi_cols;
+  int r, c;
+  for (r = 0; r < mi_rows; ++r) {
+    for (c = 0; c < mi_cols; ++c) {
+      AV1AnalyzerMI *mi =
+        &analyzer_data.mi_grid.buffer[r * analyzer_data.mi_cols + c];
+      mi->bits = 0;
+    }
   }
 }
 

@@ -98,6 +98,24 @@ aom_codec_err_t av1_analyze_frame(struct AV1Decoder *pbi) {
       }
     }
   }
-  // Sa
+  return AOM_CODEC_OK;
+}
+
+aom_codec_err_t av1_analyze_count_bits(struct AV1Decoder *pbi,
+                                       int plane,
+                                       int c,
+                                       int r,
+                                       size_t bits) {
+  AV1_COMMON *const cm = &pbi->common;
+  const int mi_rows = cm->mi_rows;
+  const int mi_cols = cm->mi_cols;
+  if (pbi->analyzer_data == NULL) {
+    return AOM_CODEC_OK;
+  }
+  if (plane != 0) {
+    return AOM_CODEC_OK;
+  }
+  AV1AnalyzerMI *mi = &pbi->analyzer_data->mi_grid.buffer[r * mi_cols + c];
+  mi->bits += bits;
   return AOM_CODEC_OK;
 }

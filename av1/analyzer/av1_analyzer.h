@@ -78,6 +78,7 @@ typedef struct AV1AnalyzerMI {
 
   AV1TransformType transform_type;
   AV1TransformSize transform_size;
+  size_t bits;
 } AV1AnalyzerMI;
 
 typedef struct AV1AnalyzerMIBuffer {
@@ -110,5 +111,9 @@ aom_codec_err_t av1_analyze_predicted_block(struct AV1Decoder *pbi,
                                             int transform_size);
 
 aom_codec_err_t av1_analyze_frame(struct AV1Decoder *pbi);
-
+aom_codec_err_t av1_analyze_count_bits(struct AV1Decoder *pbi,
+                                       int plane,
+                                       int c,
+                                       int r,
+                                       size_t bits);
 #endif  // AV1_ANALYZER_AV1_ANALYZER_H_

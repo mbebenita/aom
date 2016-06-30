@@ -745,6 +745,7 @@ static void decode_block(AV1Decoder *const pbi, MACROBLOCKD *const xd,
   const int x_mis = AOMMIN(bw, cm->mi_cols - mi_col);
   const int y_mis = AOMMIN(bh, cm->mi_rows - mi_row);
 
+  const size_t mi_bits_before = aom_dk_reader_tell(r);
   MB_MODE_INFO *mbmi = set_offsets(cm, xd, bsize, mi_row, mi_col, bw, bh, x_mis,
                                    y_mis, bwl, bhl);
 #if CONFIG_PVQ && DEBUG_PVQ
@@ -874,6 +875,8 @@ static void decode_block(AV1Decoder *const pbi, MACROBLOCKD *const xd,
   printf("%d bits / partition\n", od_ec_dec_tell(&r->ec) - tell);
 #endif
   xd->corrupted |= aom_reader_has_error(r);
+  const size_t mi_bits_after = aom_dk_reader_tell(r);
+  av1_analyze_count_bits(pbi, 0, mi_col, mi_row, mi_bits_after - mi_bits_before);
 }
 
 static INLINE int dec_partition_plane_context(const MACROBLOCKD *xd, int mi_row,

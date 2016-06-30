@@ -97,7 +97,8 @@ enum MIProperty {
   GET_MI_BLOCK_SIZE,
   GET_MI_TRANSFORM_TYPE,
   GET_MI_TRANSFORM_SIZE,
-  GET_MI_DERING_GAIN
+  GET_MI_DERING_GAIN,
+  GET_MI_BITS
 }
 
 enum AOMAnalyzerTransformMode {
@@ -121,6 +122,22 @@ enum AOMAnalyzerTransformSize {
   TX_16X16       = 2,
   TX_32X32       = 3
 }
+
+let blockSizes = [
+  [2, 2],
+  [2, 3],
+  [3, 2],
+  [3, 3, "rgba(33, 33, 33, .02)"],
+  [3, 4, "rgba(33, 33, 33, .04)"],
+  [4, 3, "rgba(33, 33, 33, .06)"],
+  [4, 4, "rgba(33, 33, 33, .08)"],
+  [4, 5, "rgba(33, 33, 33, .10)"],
+  [5, 4, "rgba(33, 33, 33, .12)"],
+  [5, 5, "rgba(33, 33, 33, .14)"],
+  [5, 6, "rgba(33, 33, 33, .16)"],
+  [6, 5, "rgba(33, 33, 33, .18)"],
+  [6, 6, "rgba(33, 33, 33, .20)"]
+];
 
 interface AOMInternal {
   _read_frame (): number;
@@ -351,6 +368,7 @@ class AppCtrl {
   showMotionVectors: boolean = false;
   showDering: boolean = false;
   showMode: boolean = false;
+  showBits: boolean = false;
   showSkip: boolean = false;
   showInfo: boolean = true;
 
@@ -391,7 +409,7 @@ class AppCtrl {
       default: false
     },
     showSuperBlockGrid: {
-      key: "b",
+      key: "g",
       description: "Show SB Grid",
       detail: "Shows 64x64 mode info grid.",
       default: false
@@ -402,16 +420,16 @@ class AppCtrl {
       detail: "Shows tile grid.",
       default: false
     },
-    showBlockSplit: {
-      key: "s",
-      description: "Show Split Grid",
-      detail: "Shows block partitions.",
-      default: false
-    },
     showTransformSplit: {
       key: "t",
       description: "Show Transform Grid",
       detail: "Shows transform blocks.",
+      default: false
+    },
+    showBlockSplit: {
+      key: "s",
+      description: "Show Split Grid",
+      detail: "Shows block partitions.",
       default: false
     },
     showDering: {
@@ -430,6 +448,12 @@ class AppCtrl {
       key: "o",
       description: "Show Mode",
       detail: "Shows prediction modes.",
+      default: false
+    },
+    showBits: {
+      key: "b",
+      description: "Show Bits",
+      detail: "Shows bits.",
       default: false
     },
     showSkip: {
@@ -476,6 +500,9 @@ class AppCtrl {
     },
     transformSize: {
       description: "Transform Size"
+    },
+    bits: {
+      description: "Bits"
     }
   };
 
@@ -663,9 +690,14 @@ class AppCtrl {
       event.preventDefault();
     }
 
+    var installedKeys = {};
     for (let name in this.options) {
       let option = this.options[name];
       if (option.key) {
+        if (installedKeys[option.key]) {
+          console.error("Key: " + option.key + " for " + option.description  + ", is already mapped to " + installedKeys[option.key].description);
+        }
+        installedKeys[option.key] = option;
         Mousetrap.bind([option.key], toggle.bind(this, name));
       }
     }
@@ -1123,6 +1155,7 @@ class AppCtrl {
   drawLayers(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
     this.showMotionVectors && this.drawMotionVectors(ctx, src, dst);
     this.showDering && this.drawDering(ctx, src, dst);
+    this.showBits &&  this.drawBits(ctx, src, dst);
     this.showMode && this.drawMode(ctx, src, dst);
     this.showSkip && this.drawSkip(ctx, src, dst);
     this.showTransformSplit && this.drawTransformSplit(ctx, src, dst);
@@ -1212,22 +1245,6 @@ class AppCtrl {
     ctx.translate(-src.x * scale, -src.y * scale);
     ctx.beginPath();
 
-    let sizes = [
-      [2, 2],
-      [2, 3],
-      [3, 2],
-      [3, 3, "rgba(33, 33, 33, .02)"],
-      [3, 4, "rgba(33, 33, 33, .04)"],
-      [4, 3, "rgba(33, 33, 33, .06)"],
-      [4, 4, "rgba(33, 33, 33, .08)"],
-      [4, 5, "rgba(33, 33, 33, .10)"],
-      [5, 4, "rgba(33, 33, 33, .12)"],
-      [5, 5, "rgba(33, 33, 33, .14)"],
-      [5, 6, "rgba(33, 33, 33, .16)"],
-      [6, 5, "rgba(33, 33, 33, .18)"],
-      [6, 6, "rgba(33, 33, 33, .20)"]
-    ];
-
     let lineWidth = 1;
     ctx.lineWidth = lineWidth;
 
@@ -1245,9 +1262,9 @@ class AppCtrl {
 
     let S = scale * this.blockSize;
     // Draw block sizes above 8x8.
-    for (let i = 3; i < sizes.length; i++) {
-      let dc = 1 << (<number>sizes[i][0] - 3);
-      let dr = 1 << (<number>sizes[i][1] - 3);
+    for (let i = 3; i < blockSizes.length; i++) {
+      let dc = 1 << (<number>blockSizes[i][0] - 3);
+      let dr = 1 << (<number>blockSizes[i][1] - 3);
       for (let c = 0; c < cols; c += dc) {
         for (let r = 0; r < rows; r += dr) {
           let t = this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, c, r);
@@ -1361,18 +1378,37 @@ class AppCtrl {
     ctx.restore();
   }
 
-  drawFillBlock(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle, setFillStyle: (c: number, r: number) => boolean) {
+  drawFillBlock(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle, setFillStyle: (miCol: number, miRow: number, col: number, row: number) => boolean) {
     let {cols, rows} = this.aom.getMIGridSize();
     let scale = dst.w / src.w;
     let scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
     ctx.save();
     ctx.globalAlpha = 0.75;
     ctx.translate(-src.x * scale, -src.y * scale);
-    let S = scale * this.blockSize;
+    let s = scale * this.blockSize;
     for (let c = 0; c < cols; c++) {
       for (let r = 0; r < rows; r++) {
-        if (setFillStyle(c, r)) {
-          ctx.fillRect(c * S, r * S, S, S);
+        let miBlockSize = this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, c, r);
+        let w = scale * (1 << <number>blockSizes[miBlockSize][0]);
+        let h = scale * (1 << <number>blockSizes[miBlockSize][1]);
+        switch (miBlockSize) {
+          case AOMAnalyzerBlockSize.BLOCK_4X4:
+            setFillStyle(c, r, 0, 0) && ctx.fillRect(c * s,     r * s,     w, h);
+            setFillStyle(c, r, 0, 1) && ctx.fillRect(c * s,     r * s + h, w, h);
+            setFillStyle(c, r, 1, 0) && ctx.fillRect(c * s + w, r * s,     w, h);
+            setFillStyle(c, r, 1, 1) && ctx.fillRect(c * s + w, r * s + h, w, h);
+            break;
+          case AOMAnalyzerBlockSize.BLOCK_8X4:
+            setFillStyle(c, r, 0, 0) && ctx.fillRect(c * s,     r * s,     w, h);
+            setFillStyle(c, r, 0, 1) && ctx.fillRect(c * s,     r * s + h, w, h);
+            break;
+          case AOMAnalyzerBlockSize.BLOCK_4X8:
+            setFillStyle(c, r, 0, 0) && ctx.fillRect(c * s,     r * s,     w, h);
+            setFillStyle(c, r, 1, 0) && ctx.fillRect(c * s + w, r * s,     w, h);
+            break;
+          default:
+            setFillStyle(c, r, 0, 0) && ctx.fillRect(c * s, r * s, scale * w, scale * h);
+            break;
         }
       }
     }
@@ -1380,8 +1416,8 @@ class AppCtrl {
   }
 
   drawDering(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
-    this.drawFillBlock(ctx, src, dst, (c, r) => {
-      let i = this.aom.get_mi_property(MIProperty.GET_MI_DERING_GAIN, c, r);
+    this.drawFillBlock(ctx, src, dst, (miCol, miRow, col, row) => {
+      let i = this.aom.get_mi_property(MIProperty.GET_MI_DERING_GAIN, miCol, miRow);
       if (i == 0) return false;
       ctx.fillStyle = "rgba(33,33,33," + (i / 4) + ")";
       return true;
@@ -1389,10 +1425,39 @@ class AppCtrl {
   }
 
   drawSkip(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
-    this.drawFillBlock(ctx, src, dst, (c, r) => {
-      let i = this.aom.get_mi_property(MIProperty.GET_MI_SKIP, c, r);
+    this.drawFillBlock(ctx, src, dst, (miCol, miRow, col, row) => {
+      let i = this.aom.get_mi_property(MIProperty.GET_MI_SKIP, miCol, miRow);
       if (i == 0) return false;
       ctx.fillStyle = this.skipColor;
+      return true;
+    });
+  }
+
+  drawBits(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
+    let {cols, rows} = this.aom.getMIGridSize();
+    let miTotalBits = 0;
+    let miMaxBits = 0;
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < rows; r++) {
+        let miBits = this.aom.get_mi_property(MIProperty.GET_MI_BITS, c, r);
+        miTotalBits += miBits;
+        miMaxBits = Math.max(miMaxBits, miBits);
+      }
+    }
+    let gradient = tinygradient([
+      {color: tinycolor("#9400D3").brighten(100), pos: 0},
+      {color: tinycolor("#9400D3"), pos: 1}
+    ]);
+    let colorRange = gradient.rgb(32);
+
+    let miAverageBits = miTotalBits / (cols * rows);
+    this.drawFillBlock(ctx, src, dst, (miCol, miRow, col, row) => {
+      let miBits = this.aom.get_mi_property(MIProperty.GET_MI_BITS, miCol, miRow);
+      if (miBits <= 0) return false;
+      // ctx.fillStyle = colors[(miBits / miMaxBits) * colors.length | 0];
+      var color = colorRange[((miBits / miMaxBits) * (colorRange.length - 1)) | 0].toString();
+      // ctx.fillStyle = "rgba(33,33,33," + (miBits / miMaxBits) + ")";
+      ctx.fillStyle = color;
       return true;
     });
   }
@@ -1428,6 +1493,8 @@ class AppCtrl {
         return  AOMAnalyzerTransformType[this.aom.get_mi_property(MIProperty.GET_MI_TRANSFORM_TYPE, mi.x, mi.y)];
       case "transformSize":
         return AOMAnalyzerTransformSize[this.aom.get_mi_property(MIProperty.GET_MI_TRANSFORM_SIZE, mi.x, mi.y)];
+      case "bits":
+        return this.aom.get_mi_property(MIProperty.GET_MI_BITS, mi.x, mi.y);
     }
     return "?";
   }

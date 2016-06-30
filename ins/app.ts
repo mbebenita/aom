@@ -342,6 +342,8 @@ interface Decoder {
   path: string;
 }
 
+const BLOCK_SIZE = 8;
+
 class AppCtrl {
   aom: AOM = null;
 
@@ -518,6 +520,9 @@ class AppCtrl {
     },
     bits: {
       description: "Bits"
+    },
+    error: {
+      description: "Error"
     }
   };
 
@@ -579,7 +584,6 @@ class AppCtrl {
   splitLineWidth = 1;
   transformLineWidth = 1;
   modeLineWidth = 2;
-  blockSize = 8;
 
   zoomLock = false;
 
@@ -1159,12 +1163,12 @@ class AppCtrl {
     let x, y, text;
     x = dst.x + dst.w / 2 + textPadding;
     y = textHeight + textPadding;
-    text = String(center.y) + " (" + (center.y / this.blockSize | 0) + ")";
+    text = String(center.y) + " (" + (center.y / BLOCK_SIZE | 0) + ")";
     ctx.fillText(text, x, y);
 
     x = textPadding;
     y = dst.y + dst.h / 2 + textHeight + textPadding;
-    text = String(center.x) + " (" + (center.x / this.blockSize | 0) + ")";
+    text = String(center.x) + " (" + (center.x / BLOCK_SIZE | 0) + ")";
     ctx.fillText(text, x, y);
 
     ctx.restore();
@@ -1182,12 +1186,12 @@ class AppCtrl {
     ctx.translate(-src.x * scale, -src.y * scale);
     ctx.beginPath();
     for (let c = 0; c <= cols; c += 8) {
-      let offset = c * this.blockSize * scale;
+      let offset = c * BLOCK_SIZE * scale;
       ctx.moveTo(offset, 0);
       ctx.lineTo(offset, scaledFrameSize.h);
     }
     for (let r = 0; r <= rows; r += 8) {
-      let offset = r * this.blockSize * scale;
+      let offset = r * BLOCK_SIZE * scale;
       ctx.moveTo(0, offset);
       ctx.lineTo(scaledFrameSize.w, offset);
     }
@@ -1211,12 +1215,12 @@ class AppCtrl {
     ctx.beginPath();
 
     for (let c = 0; c <= 1 << tileColsLog2; c ++) {
-      let offset = tileOffset(c, cols, tileColsLog2) * this.blockSize * scale;
+      let offset = tileOffset(c, cols, tileColsLog2) * BLOCK_SIZE * scale;
       ctx.moveTo(offset, 0);
       ctx.lineTo(offset, scaledFrameSize.h);
     }
     for (let r = 0; r <= 1 << tileRowsLog2; r ++) {
-      let offset = tileOffset(r, rows, tileRowsLog2) * this.blockSize * scale;
+      let offset = tileOffset(r, rows, tileRowsLog2) * BLOCK_SIZE * scale;
       ctx.moveTo(0, offset);
       ctx.lineTo(scaledFrameSize.w, offset);
     }
@@ -1408,7 +1412,7 @@ class AppCtrl {
       }
     }
 
-    let S = scale * this.blockSize;
+    let S = scale * BLOCK_SIZE;
 
     for (let c = 0; c < cols; c++) {
       for (let r = 0; r < rows; r++) {
@@ -1449,7 +1453,7 @@ class AppCtrl {
       ctx.stroke();
     }
 
-    let S = scale * this.blockSize;
+    let S = scale * BLOCK_SIZE;
     // Draw block sizes above 8x8.
     for (let i = 3; i < blockSizes.length; i++) {
       let dc = 1 << (blockSizes[i][0] - 3);
@@ -1532,7 +1536,7 @@ class AppCtrl {
     }
 
     // Draw >= 8x8 transforms
-    let S = scale * this.blockSize;
+    let S = scale * BLOCK_SIZE;
     for (let i = 1; i < 4; i++) {
       let side = 1 << (i - 1);
       for (let c = 0; c < cols; c += side) {
@@ -1574,7 +1578,7 @@ class AppCtrl {
     ctx.save();
     ctx.globalAlpha = 0.75;
     ctx.translate(-src.x * scale, -src.y * scale);
-    let s = scale * this.blockSize;
+    let s = scale * BLOCK_SIZE;
     for (let c = 0; c < cols; c++) {
       for (let r = 0; r < rows; r++) {
         let miBlockSize = this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, c, r);
@@ -1611,7 +1615,7 @@ class AppCtrl {
     ctx.save();
     ctx.globalAlpha = 0.75;
     ctx.translate(-src.x * scale, -src.y * scale);
-    let s = scale * this.blockSize;
+    let s = scale * BLOCK_SIZE;
     for (let c = 0; c < cols; c += 8) {
       for (let r = 0; r < rows; r += 8) {
         let w = s * 8;
@@ -1677,6 +1681,34 @@ class AppCtrl {
     return new Vector(x, y);
   }
 
+  getMIError(mi: Vector): number | string {
+    var file = this.originalImage;
+    if (!this.originalImage) {
+      return "N/A, load a Y4M file first.";
+    }
+    var frame = file.frames[this.frameNumber];
+    let AYp = frame.y;
+    let AYs = file.size.w;
+    let AH = file.buffer;
+
+    let BYp = this.aom.get_plane(0);
+    let BYs = this.aom.get_plane_stride(0);
+    let BH = this.aom.HEAPU8;
+    let size = this.getMIBlockSize(mi.x, mi.y);
+    let Ap = AYp + mi.y * BLOCK_SIZE * AYs + mi.x * BLOCK_SIZE;
+    let Bp = BYp + mi.y * BLOCK_SIZE * BYs + mi.x * BLOCK_SIZE;
+    let error = 0;
+    for (let y = 0; y < size.h; y++) {
+      for (let x = 0; x < size.w; x++) {
+        let d = AH[Ap + x] - BH[Bp + x];
+        error += d * d;
+      }
+      Ap += AYs;
+      Bp += BYs;
+    }
+    return error;
+  }
+
   uiBlockInfo(name: string): string | number {
     if (!this.aom) {
       return;
@@ -1703,6 +1735,8 @@ class AppCtrl {
         return AOMAnalyzerTransformSize[this.aom.get_mi_property(MIProperty.GET_MI_TRANSFORM_SIZE, mi.x, mi.y)];
       case "bits":
         return this.aom.get_mi_property(MIProperty.GET_MI_BITS, mi.x, mi.y);
+      case "error":
+        return this.getMIError(mi);
     }
     return "?";
   }
@@ -1715,7 +1749,7 @@ class AppCtrl {
     ctx.save();
     ctx.globalAlpha = 0.75;
     ctx.translate(-src.x * scale, -src.y * scale);
-    let S = scale * this.blockSize;
+    let S = scale * BLOCK_SIZE;
 
     let gradient = tinygradient([
       {color: tinycolor(this.mvColor).brighten(50), pos: 0},

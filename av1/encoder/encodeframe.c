@@ -1012,8 +1012,13 @@ static void update_state(AV1_COMP *cpi, ThreadData *td, PICK_MODE_CONTEXT *ctx,
       av1_update_mv_count(td);
 
       if (cm->interp_filter == SWITCHABLE) {
-        const int ctx = av1_get_pred_context_switchable_interp(xd);
-        ++td->counts->switchable_interp[ctx][mbmi->interp_filter];
+#if CONFIG_EXT_INTERP
+        if (is_interp_needed(xd))
+#endif
+        {
+          const int ctx = av1_get_pred_context_switchable_interp(xd);
+          ++td->counts->switchable_interp[ctx][mbmi->interp_filter];
+        }
       }
 
 #if CONFIG_MOTION_VAR
@@ -1080,10 +1085,6 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
   struct macroblockd_plane *const pd = xd->plane;
   const AQ_MODE aq_mode = cpi->oxcf.aq_mode;
   int i, orig_rdmult;
-#if CONFIG_PVQ
-  uint32_t pre_rdo_offset = x->daala_enc.ec.offs;
-  od_rollback_buffer pre_rdo_buf;
-#endif
 
   aom_clear_system_state();
 
@@ -1152,10 +1153,6 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
       x->rdmult = av1_cyclic_refresh_get_rdmult(cpi->cyclic_refresh);
   }
 
-#if CONFIG_PVQ
-  od_encode_checkpoint(&x->daala_enc, &pre_rdo_buf);
-#endif
-
   // Find best coding mode & reconstruct the MB so it is available
   // as a predictor for MBs that follow in the SB
   if (frame_is_intra_only(cm)) {
@@ -1173,15 +1170,6 @@ static void rd_pick_sb_modes(AV1_COMP *cpi, TileDataEnc *tile_data,
                                     bsize, ctx, best_rd);
     }
   }
-
-#if CONFIG_PVQ
-  od_encode_rollback(&x->daala_enc, &pre_rdo_buf);
-#endif
-
-#if CONFIG_PVQ
-  (void) pre_rdo_offset;
-  assert(pre_rdo_offset == x->daala_enc.ec.offs);
-#endif
 
   // Examine the resulting rate and for AQ mode 2 make a segment choice.
   if ((rd_cost->rate != INT_MAX) && (aq_mode == COMPLEXITY_AQ) &&
@@ -2873,14 +2861,33 @@ static void encode_frame_internal(AV1_COMP *cpi) {
       !cm->error_resilient_mode && cm->width == cm->last_width &&
       cm->height == cm->last_height && !cm->intra_only && cm->last_show_frame &&
       (cm->last_frame_type != KEY_FRAME);
+#if CONFIG_EXT_REFS
+  // NOTE(zoeliu): As cm->prev_frame can take neither a frame of
+  //               show_exisiting_frame=1, nor can it take a frame not used as
+  //               a reference, it is probable that by the time it is being
+  //               referred to, the frame buffer it originally points to may
+  //               already get expired and have been reassigned to the current
+  //               newly coded frame. Hence, we need to check whether this is
+  //               the case, and if yes, we have 2 choices:
+  //               (1) Simply disable the use of previous frame mvs; or
+  //               (2) Have cm->prev_frame point to one reference frame buffer,
+  //                   e.g. LAST_FRAME.
+  if (cm->use_prev_frame_mvs && !enc_is_ref_frame_buf(cpi, cm->prev_frame)) {
+    // Reassign the LAST_FRAME buffer to cm->prev_frame.
+    const int last_fb_buf_idx = get_ref_frame_buf_idx(cpi, LAST_FRAME);
+    cm->prev_frame = &cm->buffer_pool->frame_bufs[last_fb_buf_idx];
+  }
+#endif  // CONFIG_EXT_REFS
+
   // Special case: set prev_mi to NULL when the previous mode info
   // context cannot be used.
   cm->prev_mi =
       cm->use_prev_frame_mvs ? cm->prev_mip + cm->mi_stride + 1 : NULL;
 
   x->quant_fp = cpi->sf.use_quant_fp;
+#if !CONFIG_PVQ
   av1_zero(x->skip_txfm);
-
+#endif
   {
     struct aom_usec_timer emr_timer;
     aom_usec_timer_start(&emr_timer);
@@ -3093,8 +3100,9 @@ static void encode_superblock(AV1_COMP *cpi, ThreadData *td, TOKENEXTRA **t,
   const int mi_width = num_8x8_blocks_wide_lookup[bsize];
   const int mi_height = num_8x8_blocks_high_lookup[bsize];
 
+#if !CONFIG_PVQ
   memset(x->skip_txfm, 0, sizeof(x->skip_txfm));
-
+#endif
   ctx->is_coded = 1;
   x->use_lp32x32fdct = cpi->sf.use_lp32x32fdct;
 

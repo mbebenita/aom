@@ -4,6 +4,16 @@ declare let Mousetrap: any;
 declare let tinycolor: any;
 declare let tinygradient: any;
 
+class Y4MFile {
+  constructor(public size: Size, public buffer: Uint8Array, public frames: Y4MFrame []) {
+    // ...
+  }
+}
+class Y4MFrame {
+  constructor(public y: number, public cb: number, public cr: number) {
+    // ...
+  }
+}
 interface Window {
   Module: any;
 }
@@ -338,6 +348,7 @@ interface Decoder {
 
 class AppCtrl {
   aom: AOM = null;
+
   decoders = {
     default: {
       description: "Default",
@@ -358,6 +369,7 @@ class AppCtrl {
   showY: boolean;
   showU: boolean;
   showV: boolean;
+  showOriginal: boolean;
   showImage: boolean;
   showPredictedImage: boolean;
 
@@ -393,6 +405,13 @@ class AppCtrl {
       detail: "Shows V image plane.",
       updatesImage: true,
       default: true
+    },
+    showOriginal: {
+      key: "w",
+      description: "Show Original Image",
+      detail: "Shows original image.",
+      updatesImage: true,
+      default: false
     },
     showImage: {
       key: "i",
@@ -506,7 +525,8 @@ class AppCtrl {
     }
   };
 
-  frameNumber: number = 0;
+  frameNumber: number = -1;
+  originalImage: Y4MFile;
 
   progressValue = 0;
   progressMode = "determinate";
@@ -586,6 +606,16 @@ class AppCtrl {
         self.playFrameAsync(1, () => {
           self.drawFrame();
         });
+      };
+      reader.readAsArrayBuffer(input.files[0]);
+    };
+    $scope.y4mFileInputNameChanged = function() {
+      let input = <any>event.target;
+      let reader = new FileReader();
+      reader.onload = function() {
+        let buffer = reader.result;
+        self.originalImage = self.loadY4MBytes(new Uint8Array(buffer));
+        self.drawImages();
       };
       reader.readAsArrayBuffer(input.files[0]);
     };
@@ -793,6 +823,60 @@ class AppCtrl {
     });
   }
 
+  loadY4MBytes(buffer: Uint8Array): Y4MFile {
+    return this.parseY4MBytes(buffer);
+  }
+
+  parseY4MBytes(buffer: Uint8Array): Y4MFile {
+    let header;
+    let eol = "\n".charCodeAt(0);
+    let offset = 0;
+    while (offset < buffer.length) {
+      if (buffer[offset++] == eol) {
+        header = String.fromCharCode.apply(null, (buffer.subarray(0, offset - 1)));
+        break;
+      }
+    }
+    let parameters = header.split(" ");
+    let size = new Size(0, 0);
+    let colorSpace = "420";
+    for (let i = 0; i < parameters.length; i++) {
+      let parameter = parameters[i];
+      if (parameter[0] == "W") {
+        size.w = parseInt(parameter.substring(1));
+      } else if (parameter[0] == "H") {
+        size.h = parseInt(parameter.substring(1));
+      } else if (parameter[0] == "C") {
+        colorSpace = parameter.substring(1);
+      }
+    }
+    if (colorSpace != "420" && colorSpace != "420jpeg") {
+      console.error("Unsupported color space: " + colorSpace);
+      return;
+    }
+    let y = size.w * size.h;
+    let cb = (size.w >> 1) * (size.h >> 1);
+    let cr = (size.w >> 1) * (size.h >> 1);
+    let frameLength = y + cb + cr;
+    var frames: Y4MFrame [] = [];
+    while (offset < buffer.length) {
+      let start = offset;
+      while (offset < buffer.length) {
+        if (buffer[offset++] == eol) {
+          break;
+        }
+      }
+      let frameHeader = String.fromCharCode.apply(null, (buffer.subarray(start, offset - 1)));
+      if (frameHeader != "FRAME") {
+        console.error("Cannot parse frame: ");
+        return;
+      }
+      frames.push(new Y4MFrame(offset, offset + y, offset + y + cb));
+      offset += frameLength;
+    }
+    return new Y4MFile(size, buffer, frames);
+  }
+
   openFileBytes(buffer: Uint8Array) {
     this.fileSize = buffer.length;
     FS.writeFile("/tmp/input.ivf", buffer, { encoding: "binary" });
@@ -860,12 +944,23 @@ class AppCtrl {
     });
   }
 
+  showFileInputDialog() {
+    angular.element(document.querySelector('#fileInput'))[0].click();
+  }
+
+  showY4MFileInputDialog() {
+    angular.element(document.querySelector('#y4mFileInput'))[0].click();
+  }
+
   uiAction(name) {
     let file;
     switch (name) {
       case "open-file":
-        angular.element(document.querySelector('#fileInput'))[0].click();
-        break;
+        this.showFileInputDialog();
+        return;
+      case "open-y4m-file":
+        this.showY4MFileInputDialog();
+        return;
       case "open-crosswalk":
         file = "media/crosswalk.ivf";
         break;
@@ -1149,8 +1244,24 @@ class AppCtrl {
 
   drawImages() {
     this.clearImage();
+    this.showOriginal && this.drawOriginalImage();
     this.showImage && this.drawDecodedImage();
     this.showPredictedImage && this.drawPredictedImage("difference");
+  }
+
+  drawOriginalImage(compositeOperation: string = "source-over") {
+    if (!this.originalImage) {
+      return;
+    }
+    var file = this.originalImage;
+    var frame = file.frames[this.frameNumber];
+    let Yp = frame.y;
+    let Ys = file.size.w;
+    let Up = frame.cb;
+    let Us = file.size.w >> 1;
+    let Vp = frame.cr;
+    let Vs = file.size.w >> 1;
+    this.drawImage(file.buffer, Yp, Ys, Up, Us, Vp, Vs, compositeOperation);
   }
 
   drawDecodedImage(compositeOperation: string = "source-over") {
@@ -1160,7 +1271,7 @@ class AppCtrl {
     let Us = this.aom.get_plane_stride(1);
     let Vp = this.aom.get_plane(2);
     let Vs = this.aom.get_plane_stride(2);
-    this.drawImage(Yp, Ys, Up, Us, Vp, Vs, compositeOperation);
+    this.drawImage(this.aom.HEAPU8, Yp, Ys, Up, Us, Vp, Vs, compositeOperation);
   }
 
   drawPredictedImage(compositeOperation: string = "source-over") {
@@ -1172,12 +1283,11 @@ class AppCtrl {
 
     let Vp = this.aom.get_predicted_plane_buffer(2);
     let Vs = this.aom.get_predicted_plane_stride(2);
-    this.drawImage(Yp, Ys, Up, Us, Vp, Vs, compositeOperation);
+    this.drawImage(this.aom.HEAPU8, Yp, Ys, Up, Us, Vp, Vs, compositeOperation);
   }
 
-  drawImage(Yp, Ys, Up, Us, Vp, Vs, compositeOperation: string) {
+  drawImage(H: Uint8Array, Yp, Ys, Up, Us, Vp, Vs, compositeOperation: string) {
     let I = this.imageData.data;
-    let H = this.aom.HEAPU8;
 
     let w = this.frameSize.w;
     let h = this.frameSize.h;

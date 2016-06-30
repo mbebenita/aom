@@ -54,7 +54,7 @@
       margin-bottom: 0px;
     }
 
-    #fileInput {
+    #fileInput, #y4mFileInput {
       display: none;
     }
     .md-errors-spacer {
@@ -79,6 +79,7 @@
 
 <body ng-app="AomInspectorApp" ng-cloak ng-controller="AppCtrl as vm" layout="rows">
   <input id="fileInput" type="file" onchange="angular.element(this).scope().fileInputNameChanged(this)">
+  <input id="y4mFileInput" type="file" onchange="angular.element(this).scope().y4mFileInputNameChanged(this)">
   <div flex layout="column">
     <!--Progress Bar-->
     <md-progress-linear md-mode="{{vm.progressMode}}" value="{{vm.progressValue}}"></md-progress-linear>
@@ -94,6 +95,11 @@
               <md-menu-item>
                 <md-button ng-click="vm.uiAction('open-file', $event)">
                   Open ...
+                </md-button>
+              </md-menu-item>
+              <md-menu-item>
+                <md-button ng-click="vm.uiAction('open-y4m-file', $event)">
+                  Open Y4M ...
                 </md-button>
               </md-menu-item>
               <md-menu-item>

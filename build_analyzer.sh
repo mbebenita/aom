@@ -9,6 +9,7 @@ cd asm
 emmake make
 cp examples/emscripten_decoder examples/emscripten_decoder.bc
 emcc -O3 examples/emscripten_decoder.bc -o examples/decoder.js -s TOTAL_MEMORY=134217728
+mkdir -p ../ins/bin
 cp examples/decoder.js ../ins/bin/decoder.js
 cp examples/decoder.js.mem ../ins/bin/decoder.js.mem
 echo Analyzer is ready, serve it from the ins directory using your favorite web server. E.g. 'cd ins && python -m SimpleHTTPServer'

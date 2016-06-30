@@ -881,6 +881,7 @@ class AppCtrl {
     this.fileSize = buffer.length;
     FS.writeFile("/tmp/input.ivf", buffer, { encoding: "binary" });
     this.aom.open_file();
+    this.frameNumber = -1;
     this.frameSize = this.aom.getFrameSize();
     this.resetCanvases();
   }

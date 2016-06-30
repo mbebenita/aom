@@ -13,5 +13,5 @@ cd ..
 mkdir -p ins/bin
 cp asm/examples/decoder.js ins/bin/decoder.js
 cp asm/examples/decoder.js.mem ins/bin/decoder.js.mem
-tsc --target ES6 ins/app.ts
+tsc --target ES5 ins/app.ts
 echo Analyzer is ready, serve it from the ins directory using your favorite web server. E.g. 'cd ins && python -m SimpleHTTPServer'

@@ -725,7 +725,7 @@ class AppCtrl {
       );
     }
     this.mousePosition = getMousePosition(this.overlayCanvas, event);
-    this.drawInfo();
+    this.showInfo && this.drawInfo();
     this.uiApply();
   }
 
@@ -739,16 +739,27 @@ class AppCtrl {
   /**
    * Gets the coordinates of the MI block under the mousedown.
    */
-  getMI(): Vector {
+  getMIUnderMouse(): Vector {
     let v = this.mousePosition;
     let c = (v.x / this.scale) >> 3;
     let r = (v.y / this.scale) >> 3;
+    return this.getMI(c, r);
+  }
+
+  /**
+   * Get the coordinates of the parent MI block if this block is
+   * not an 8x8 block.
+   */
+  getMI(c: number, r: number): Vector {
     let blockSize = this.getMIBlockSize(c, r);
-    // Get the coordinates of the parent MI block if this block is
-    // not an 8x8 block.
     c = c & ~((blockSize.w - 1) >> 3);
     r = r & ~((blockSize.h - 1) >> 3);
     return new Vector(c, r);
+  }
+
+  getMIBits(c: number, r: number): number {
+    var mi = this.getMI(c, r);
+    return this.aom.get_mi_property(MIProperty.GET_MI_BITS, mi.x, mi.y);
   }
 
   loadDecoder(decoder: string, next: () => any) {
@@ -1071,7 +1082,7 @@ class AppCtrl {
 
   drawFrame() {
     this.drawImages();
-    this.drawInfo();
+    this.showInfo && this.drawInfo();
     this.drawMain();
   }
 
@@ -1422,7 +1433,7 @@ class AppCtrl {
             setFillStyle(c, r, 1, 0) && ctx.fillRect(c * s + w, r * s,     w, h);
             break;
           default:
-            setFillStyle(c, r, 0, 0) && ctx.fillRect(c * s, r * s, scale * w, scale * h);
+            setFillStyle(c, r, 0, 0) && ctx.fillRect(c * s, r * s, s, s);
             break;
         }
       }
@@ -1454,7 +1465,7 @@ class AppCtrl {
     let miMaxBits = 0;
     for (let c = 0; c < cols; c++) {
       for (let r = 0; r < rows; r++) {
-        let miBits = this.aom.get_mi_property(MIProperty.GET_MI_BITS, c, r);
+        let miBits = this.getMIBits(c, r);
         miTotalBits += miBits;
         miMaxBits = Math.max(miMaxBits, miBits);
       }
@@ -1463,14 +1474,14 @@ class AppCtrl {
       {color: tinycolor("#9400D3").brighten(100), pos: 0},
       {color: tinycolor("#9400D3"), pos: 1}
     ]);
-    let colorRange = gradient.rgb(32);
+    let colorRange = gradient.rgb(32).map(x => x.toString());
 
     let miAverageBits = miTotalBits / (cols * rows);
     this.drawFillBlock(ctx, src, dst, (miCol, miRow, col, row) => {
-      let miBits = this.aom.get_mi_property(MIProperty.GET_MI_BITS, miCol, miRow);
+      let miBits = this.getMIBits(miCol, miRow);
       if (miBits <= 0) return false;
       // ctx.fillStyle = colors[(miBits / miMaxBits) * colors.length | 0];
-      var color = colorRange[((miBits / miMaxBits) * (colorRange.length - 1)) | 0].toString();
+      var color = colorRange[((miBits / miMaxBits) * (colorRange.length - 1)) | 0];
       // ctx.fillStyle = "rgba(33,33,33," + (miBits / miMaxBits) + ")";
       ctx.fillStyle = color;
       return true;
@@ -1488,7 +1499,7 @@ class AppCtrl {
     if (!this.aom) {
       return;
     }
-    let mi = this.getMI();
+    let mi = this.getMIUnderMouse();
     switch (name) {
       case "blockSize":
         return AOMAnalyzerBlockSize[this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, mi.x, mi.y)];

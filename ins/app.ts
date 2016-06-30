@@ -522,12 +522,16 @@ class AppCtrl {
   displayCanvas: HTMLCanvasElement;
   overlayCanvas: HTMLCanvasElement;
   zoomCanvas: HTMLCanvasElement;
+  chartCanvas: HTMLCanvasElement;
 
   displayContext: CanvasRenderingContext2D = null;
   overlayContext: CanvasRenderingContext2D = null;
   zoomContext: CanvasRenderingContext2D = null;
   zoomSize = 512;
   zoomLevel = 16;
+
+  chartContext: CanvasRenderingContext2D = null;
+  chartSize = 32;
   mousePosition: Vector = new Vector(0, 0);
   imageData: ImageData = null;
 
@@ -603,6 +607,11 @@ class AppCtrl {
     this.zoomContext = this.zoomCanvas.getContext("2d");
     this.zoomContext.mozImageSmoothingEnabled = false;
     this.zoomContext.imageSmoothingEnabled = false;
+
+    this.chartCanvas = <HTMLCanvasElement>document.getElementById("chart");
+    this.chartContext = this.chartCanvas.getContext("2d");
+    this.chartContext.mozImageSmoothingEnabled = false;
+    this.chartContext.imageSmoothingEnabled = false;
 
     this.overlayCanvas.addEventListener("mousemove", this.onMouseMove.bind(this));
     this.overlayCanvas.addEventListener("mousedown", this.onMouseDown.bind(this));
@@ -824,6 +833,11 @@ class AppCtrl {
 		this.zoomCanvas.style.height = this.zoomSize + "px";
     this.zoomCanvas.width = this.zoomSize * this.ratio;
 		this.zoomCanvas.height = this.zoomSize * this.ratio;
+
+    this.chartCanvas.style.width = this.zoomSize + "px";
+		this.chartCanvas.style.height = this.chartSize + "px";
+    this.chartCanvas.width = this.zoomSize * this.ratio;
+		this.chartCanvas.height = this.chartSize * this.ratio;
   }
 
   downloadFile(path: string, next: (buffer: Uint8Array) => void) {
@@ -930,6 +944,7 @@ class AppCtrl {
       if (this.aom.read_frame()) {
         return false;
       }
+      this.processFrame();
       this.lastDecodeFrameTime = performance.now() - s;
       this.frameNumber ++;
 
@@ -937,6 +952,21 @@ class AppCtrl {
       this.tileGridSize.cols = 1 << tileGridSize.cols;
       this.tileGridSize.rows = 1 << tileGridSize.rows;
     }
+  }
+
+  frameStatistics = {
+    bits: []
+  };
+
+  processFrame() {
+    let {cols, rows} = this.aom.getMIGridSize();
+    let miTotalBits = 0;
+    for (let c = 0; c < cols; c++) {
+      for (let r = 0; r < rows; r++) {
+        miTotalBits += this.aom.get_mi_property(MIProperty.GET_MI_BITS, c, r);
+      }
+    }
+    this.frameStatistics.bits.push(miTotalBits);
   }
 
   uiZoom(value: number) {
@@ -978,8 +1008,27 @@ class AppCtrl {
         dst.x, dst.y, dst.w, dst.h);
     }
     this.drawLayers(this.zoomContext, src, dst);
-
     this.drawCrosshair(this.zoomContext, mousePosition, dst);
+    this.drawChart();
+  }
+
+  drawChart() {
+    let dst = new Rectangle(0, 0, this.chartCanvas.width, this.chartCanvas.height);
+    let ctx = this.chartContext;
+    ctx.clearRect(0, 0, dst.w, dst.h);
+    ctx.fillStyle = "#9400D3";
+    let bits = this.frameStatistics.bits;
+
+    let barW = 6 * this.ratio;
+    let barWPadding = 2 * this.ratio;
+    let barWTotal = barW + barWPadding;
+    let maxFrames = dst.w / barWTotal | 0;
+    let maxBitsPerFrame = Math.max.apply(null, bits);
+    bits = bits.slice(Math.max(bits.length - maxFrames, 0));
+    for (let i = 0; i < bits.length; i++) {
+      let h = (bits[i] / maxBitsPerFrame) * dst.h | 0;
+      ctx.fillRect(i * barWTotal, dst.h - h, barW, h);
+    }
   }
 
   drawCrosshair(ctx: CanvasRenderingContext2D, center: Vector, dst: Rectangle) {

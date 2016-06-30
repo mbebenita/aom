@@ -166,31 +166,31 @@
           <table width="100%" style="padding-top: 0;">
             <tr>
               <td>Frame</td>
-              <td>{{ vm.frameNumber }}</td>
+              <td class="value">{{ vm.frameNumber }}</td>
             </tr>
             <tr>
               <td>Scale</td>
-              <td>{{ vm.scale }}</td>
+              <td class="value">{{ vm.scale }}</td>
             </tr>
             <tr>
               <td>Ratio</td>
-              <td>{{ vm.ratio }}</td>
+              <td class="value">{{ vm.ratio }}</td>
             </tr>
             <tr>
               <td>Size</td>
-              <td>{{ vm.frameSize.w }} x {{ vm.frameSize.h }}</td>
+              <td class="value">{{ vm.frameSize.w }} x {{ vm.frameSize.h }}</td>
             </tr>
             <tr>
               <td>Tiles</td>
-              <td>{{ vm.tileGridSize.cols }} x {{ vm.tileGridSize.rows }}</td>
+              <td class="value">{{ vm.tileGridSize.cols }} x {{ vm.tileGridSize.rows }}</td>
             </tr>
             <tr>
               <td>File Size</td>
-              <td>{{ vm.fileSize }}</td>
+              <td class="value">{{ vm.fileSize }}</td>
             </tr>
             <tr>
               <td>Decode Time</td>
-              <td>{{ vm.lastDecodeFrameTime.toFixed(2) }}ms</td>
+              <td class="value">{{ vm.lastDecodeFrameTime.toFixed(2) }}ms</td>
             </tr>
           </table>
 
@@ -268,17 +268,15 @@
       <md-content ng-hide="!vm.showInfo" style="background-color: #EEEEEE; width: 512px;">
         <canvas id="zoom" oncontextmenu="event.preventDefault()" style="left: 0; bottom: 0; z-index: 1000; image-rendering: pixelated;"
               width=0 height=0></canvas>
+        <div>
+          <canvas id="chart" oncontextmenu="event.preventDefault()" width=0 height=0></canvas>
+        </div>
         <md-tabs md-dynamic-height md-border-bottom>
           <md-tab label="Block Info">
             <md-content class="md-padding">
               <div ng-repeat="(name, info) in vm.blockInfo" style="padding: 0px; padding-left: 0px;">
-                <span class="key">{{info. description}}:</span> <span class="value">{{ vm.uiBlockInfo(name) }}</span>
+                <span class="key">{{info.description}}:</span> <span class="value">{{ vm.uiBlockInfo(name) }}</span>
               </div>
-            </md-content>
-          </md-tab>
-          <md-tab label="Header">
-            <md-content class="md-padding">
-            NYI
             </md-content>
           </md-tab>
         </md-tabs>

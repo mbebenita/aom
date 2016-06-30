@@ -1497,8 +1497,26 @@ class AppCtrl {
     ctx.restore();
   }
 
+  drawFillSuperBlock(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle, setFillStyle: (miCol: number, miRow: number) => boolean) {
+    let {cols, rows} = this.aom.getMIGridSize();
+    let scale = dst.w / src.w;
+    let scaledFrameSize = this.frameSize.clone().multiplyScalar(scale);
+    ctx.save();
+    ctx.globalAlpha = 0.75;
+    ctx.translate(-src.x * scale, -src.y * scale);
+    let s = scale * this.blockSize;
+    for (let c = 0; c < cols; c += 8) {
+      for (let r = 0; r < rows; r += 8) {
+        let w = s * 8;
+        let h = s * 8;
+        setFillStyle(c, r) && ctx.fillRect(c * s, r * s, w, h);
+      }
+    }
+    ctx.restore();
+  }
+
   drawDering(ctx: CanvasRenderingContext2D, src: Rectangle, dst: Rectangle) {
-    this.drawFillBlock(ctx, src, dst, (miCol, miRow, col, row) => {
+    this.drawFillSuperBlock(ctx, src, dst, (miCol, miRow) => {
       let i = this.aom.get_mi_property(MIProperty.GET_MI_DERING_GAIN, miCol, miRow);
       if (i == 0) return false;
       ctx.fillStyle = "rgba(33,33,33," + (i / 4) + ")";

@@ -255,7 +255,7 @@
 
           <div>
             <h1 class="title">Decoder</h1>
-            <md-select ng-model="vm.selectedDecoder" ng-change="vm.uiChangeDecoder()">
+            <md-select ng-model="vm.selectedDecoder" ng-change="vm.uiChangeDecoder()" aria-label="Select Decoder">
               <md-option ng-repeat="(key, value) in vm.decoders" value="{{key}}">
                 {{value.description}}
               </md-option>

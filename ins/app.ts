@@ -23,10 +23,6 @@ interface CanvasRenderingContext2D {
   imageSmoothingEnabled;
 }
 
-interface Math {
-  imul: (a: number, b: number) => number;
-}
-
 let colors = [
   "#E85EBE", "#009BFF", "#00FF00", "#0000FF", "#FF0000", "#01FFFE", "#FFA6FE",
   "#FFDB66", "#006401", "#010067", "#95003A", "#007DB5", "#FF00F6", "#FFEEE8",

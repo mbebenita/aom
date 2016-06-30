@@ -729,11 +729,14 @@ class AppCtrl {
     this.uiApply();
   }
 
-  getMIBlockSize(c: number, r: number): Size {
+  getMIBlockSize(c: number, r: number, miMinBlockSize: AOMAnalyzerBlockSize = AOMAnalyzerBlockSize.BLOCK_4X4): Size {
     let miBlockSize = this.aom.get_mi_property(MIProperty.GET_MI_BLOCK_SIZE, c, r);
     if (miBlockSize >= blockSizes.length) {
       // TODO: This should not happen, figure out what is going on.
       return new Size(0, 0);
+    }
+    if (miBlockSize < miMinBlockSize) {
+      miBlockSize = miMinBlockSize;
     }
     let w = 1 << blockSizes[miBlockSize][0];
     let h = 1 << blockSizes[miBlockSize][1];
@@ -1464,7 +1467,8 @@ class AppCtrl {
   }
 
   getMIBlockBitsPerPixel(c: number, r: number): number {
-    let blockSize = this.getMIBlockSize(c, r);
+    // Bits are stored at the 8x8 level, even if the block is split further.
+    let blockSize = this.getMIBlockSize(c, r, AOMAnalyzerBlockSize.BLOCK_8X8);
     let blockArea = blockSize.w * blockSize.h;
     let miBits = this.getMIBits(c, r);
     return miBits / blockArea;

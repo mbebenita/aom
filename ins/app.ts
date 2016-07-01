@@ -1302,8 +1302,14 @@ class AppCtrl {
   drawImages() {
     this.clearImage();
     this.showOriginalImage && this.drawOriginalImage();
-    this.showDecodedImage && this.drawDecodedImage();
-    this.showPredictedImage && this.drawPredictedImage("difference");
+    if (this.showDecodedImage && this.showPredictedImage) {
+      this.drawDecodedImage();
+      this.drawPredictedImage("difference");
+      this.invertImage();
+    } else {
+      this.showDecodedImage && this.drawDecodedImage();
+      this.showPredictedImage && this.drawPredictedImage();
+    }
   }
 
   drawOriginalImage(compositeOperation: string = "source-over") {
@@ -1343,6 +1349,12 @@ class AppCtrl {
     this.drawImage(this.aom.HEAPU8, Yp, Ys, Up, Us, Vp, Vs, compositeOperation);
   }
 
+  invertImage() {
+    this.compositionContext.globalCompositeOperation = "difference";
+    this.compositionContext.fillStyle = "#FFFFFF";
+    this.compositionContext.fillRect(0, 0, this.frameSize.w, this.frameSize.h);
+  }
+
   drawImage(H: Uint8Array, Yp, Ys, Up, Us, Vp, Vs, compositeOperation: string) {
     let I = this.imageData.data;
 
@@ -1379,18 +1391,20 @@ class AppCtrl {
       this.frameContext.putImageData(this.imageData, 0, 0);
       this.compositionContext.globalCompositeOperation = compositeOperation;
       this.compositionContext.drawImage(this.frameCanvas, 0, 0, this.frameSize.w, this.frameSize.h);
-
-      this.displayContext.mozImageSmoothingEnabled = false;
-      this.displayContext.imageSmoothingEnabled = false;
-      let dw = this.frameSize.w * this.scale * this.ratio;
-      let dh = this.frameSize.h * this.scale * this.ratio;
-      this.displayContext.drawImage(this.compositionCanvas, 0, 0, dw, dh);
     }
 
     this.drawMain();
   }
 
   drawMain() {
+    // Draw composited image.
+    this.displayContext.mozImageSmoothingEnabled = false;
+    this.displayContext.imageSmoothingEnabled = false;
+    let dw = this.frameSize.w * this.scale * this.ratio;
+    let dh = this.frameSize.h * this.scale * this.ratio;
+    this.displayContext.drawImage(this.compositionCanvas, 0, 0, dw, dh);
+
+    // Draw Layers
     let ctx = this.overlayContext;
     let ratio = window.devicePixelRatio || 1;
     ctx.clearRect(0, 0, this.frameSize.w * this.scale * ratio, this.frameSize.h * this.scale * ratio);

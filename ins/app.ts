@@ -230,6 +230,9 @@ class Size {
   clone() {
     return new Size(this.w, this.h);
   }
+  equals(other: Size) {
+    return this.w == other.w || this.h == other.h;
+  }
   multiplyScalar(scalar: number) {
 		if (isFinite(scalar)) {
 			this.w *= scalar;
@@ -371,8 +374,8 @@ class AppCtrl {
   showY: boolean;
   showU: boolean;
   showV: boolean;
-  showOriginal: boolean;
-  showImage: boolean;
+  showOriginalImage: boolean;
+  showDecodedImage: boolean;
   showPredictedImage: boolean;
 
   showSuperBlockGrid: boolean;
@@ -408,14 +411,15 @@ class AppCtrl {
       updatesImage: true,
       default: true
     },
-    showOriginal: {
+    showOriginalImage: {
       key: "w",
       description: "Show Original Image",
-      detail: "Shows original image.",
+      detail: "Shows the loaded .y4m file.",
       updatesImage: true,
-      default: false
+      default: false,
+      disabled: true
     },
-    showImage: {
+    showDecodedImage: {
       key: "i",
       description: "Show Image",
       detail: "Shows image.",
@@ -531,7 +535,7 @@ class AppCtrl {
   };
 
   frameNumber: number = -1;
-  originalImage: Y4MFile;
+  y4mFile: Y4MFile;
 
   progressValue = 0;
   progressMode = "determinate";
@@ -618,8 +622,15 @@ class AppCtrl {
       let reader = new FileReader();
       reader.onload = function() {
         let buffer = reader.result;
-        self.originalImage = self.loadY4MBytes(new Uint8Array(buffer));
+        let y4mFile = self.loadY4MBytes(new Uint8Array(buffer));
+        if (!y4mFile.size.equals(self.frameSize)) {
+          alert("Y4M file frame size doesn't match current frame size.")
+          return;
+        }
+        self.y4mFile = y4mFile;
         self.drawImages();
+        // We can now show the image.
+        self.options.showOriginalImage.disabled = false;
       };
       reader.readAsArrayBuffer(input.files[0]);
     };
@@ -859,8 +870,8 @@ class AppCtrl {
       return;
     }
     let y = size.w * size.h;
-    let cb = (size.w >> 1) * (size.h >> 1);
-    let cr = (size.w >> 1) * (size.h >> 1);
+    let cb = ((size.w + 1) >> 1) * ((size.h + 1) >> 1);
+    let cr = cb;
     let frameLength = y + cb + cr;
     var frames: Y4MFrame [] = [];
     while (offset < buffer.length) {
@@ -1099,7 +1110,7 @@ class AppCtrl {
     let dst = new Rectangle(0, 0, this.zoomSize * this.ratio, this.zoomSize * this.ratio);
 
     this.zoomContext.clearRect(0, 0, dst.w, dst.h);
-    if (this.showImage || this.showPredictedImage) {
+    if (this.showOriginalImage || this.showDecodedImage || this.showPredictedImage) {
       this.zoomContext.mozImageSmoothingEnabled = false;
       this.zoomContext.imageSmoothingEnabled = false;
       this.zoomContext.clearRect(dst.x, dst.y, dst.w, dst.h);
@@ -1249,16 +1260,16 @@ class AppCtrl {
 
   drawImages() {
     this.clearImage();
-    this.showOriginal && this.drawOriginalImage();
-    this.showImage && this.drawDecodedImage();
+    this.showOriginalImage && this.drawOriginalImage();
+    this.showDecodedImage && this.drawDecodedImage();
     this.showPredictedImage && this.drawPredictedImage("difference");
   }
 
   drawOriginalImage(compositeOperation: string = "source-over") {
-    if (!this.originalImage) {
+    if (!this.y4mFile) {
       return;
     }
-    var file = this.originalImage;
+    var file = this.y4mFile;
     var frame = file.frames[this.frameNumber];
     let Yp = frame.y;
     let Ys = file.size.w;
@@ -1686,9 +1697,9 @@ class AppCtrl {
   }
 
   getMIError(mi: Vector): number | string {
-    var file = this.originalImage;
-    if (!this.originalImage) {
-      return "N/A, load a Y4M file first.";
+    var file = this.y4mFile;
+    if (!this.y4mFile) {
+      return "N/A, load a matching .y4m file.";
     }
     var frame = file.frames[this.frameNumber];
     let AYp = frame.y;

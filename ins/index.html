@@ -202,7 +202,7 @@
 
           <h1 class="title">Toggle Layers</h1>
           <div ng-repeat="(name, option) in vm.options" style="padding: 0px; padding-left: 8px;">
-            <md-checkbox ng-model="vm[name]" ng-change="vm.uiChange()">
+            <md-checkbox ng-model="vm[name]" ng-change="vm.uiChange()" ng-disabled="option.disabled">
               {{option.description}} [<span class="keyShortcut">{{option.key}}</span>]
               <md-tooltip md-direction="right">
                 {{option.detail}}

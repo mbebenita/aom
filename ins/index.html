@@ -309,6 +309,67 @@
             </md-list>
             </md-content>
           </md-tab>
+          <md-tab label="Help">
+            <md-content class="md-padding">
+              <h3 class="md-title">AOM Bitstream Analyzer</h3>
+              <p class="md-body-1">
+                This tool allows you to explore <a href="http://aomedia.org/">AV1</a> bitstreams.
+                The analyzer uses the AV1 decoder (compiled to JavaScript using Emscripten) to extract information from the bitstream and then visualizes it in a variety of ways.
+                <span class="md-body-2" style="color: green;">The analyzer is a client side only tool, no data is ever submitted to a server.</span>
+              </p>
+
+              <h3 class="md-body-2">Y, U, V Image Planes</h3>
+              <p class="md-body-1">
+                This allows you to toggle any combination of image planes.
+                Often times, the Y plane is the most interesting and is the only plane taken into consideration when computing errors and other metrics in the analyzer.
+              </p>
+
+              <h3 class="md-body-2">Original Image</h3>
+              <p class="md-body-1">
+                You can display the original uncompressed frame by loading a .y4m file it in the file menu. If you need to compute error metrics, you'll need to have loaded the original .y4m file.
+              </p>
+
+              <h3 class="md-body-2">Decoded Image / Predicted Image</h3>
+              <p class="md-body-1">
+                You can display the decoded and predicted frame by themselves, or you can display the residual if you toggle both at the same time.
+                One interesting visualization is to hide the decoded image, show the predicted image and then toggle the mode layer to see how the predicted image
+                is constructed.
+              </p>
+              <h3 class="md-body-2">SB Grid, Tile Grid, Transform Grid, Split Grid</h3>
+              <p class="md-body-1">
+                This allows you to see various partitioning schemes.
+              </p>
+              <h3 class="md-body-2">Motion Vectors</h3>
+              <p class="md-body-1">
+                Displays motion vector magnitude. Darker areas have more motion.
+              </p>
+              <h3 class="md-body-2">Mode</h3>
+              <p class="md-body-1">
+                Block prediction modes. You can hover the mouse cursor over a block to see exactly what prediction mode it uses.
+              </p>
+              <h3 class="md-body-2">Bits</h3>
+              <p class="md-body-1">
+                Displays the number of bits used per block, scaled by the bits used in the most expensive block in the frame.
+              </p>
+              <h3 class="md-body-2">Cursor Zoom Lock</h3>
+              <p class="md-body-1">
+                This allows you to lock the cursor position while still moving the mouse to interact with UI elements in the analyzer.
+                This is useful when advancing frames to see how a specific region of the image changes.
+              </p>
+              <h3 class="md-body-2">Frame Statistics</h3>
+              <p class="md-body-1">
+                Various frame metrics are plotted per frame. You can toggle these in the Frame Statistics tab. Most of these metrics are scaled to the largest observed value.
+              </p>
+              <h3 class="md-body-2">Keyboard Shortcuts</h3>
+              <p class="md-body-1">
+                All analyzer features have keyboard <span class="keyShortcut">shortcuts</span>, use them.
+              </p>
+              <h3 class="md-body-2">Sharing Link</h3>
+              <p class="md-body-1">
+                You can share your current analyzer state with someone by sending them the sharing link.
+              </p>
+            </md-content>
+          </md-tab>
         </md-tabs>
       </md-content>
     </div>

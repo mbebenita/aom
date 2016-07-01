@@ -993,13 +993,13 @@ class AppCtrl {
         this.showY4MFileInputDialog();
         return;
       case "open-crosswalk":
-        file = "media/crosswalk.ivf";
+        file = "media/crosswalk_30.ivf";
         break;
       case "open-soccer":
-        file = "media/soccer_cif_dering.ivf";
+        file = "media/soccer_30.ivf";
         break;
       case "open-tiger":
-        file = "media/tiger.ivf";
+        file = "media/tiger_30.ivf";
         break;
     }
     this.openFile(file, () => {
@@ -1341,11 +1341,11 @@ class AppCtrl {
     let Yp = this.aom.get_predicted_plane_buffer(0);
     let Ys = this.aom.get_predicted_plane_stride(0);
 
-    let Up = this.aom.get_predicted_plane_buffer(1);
-    let Us = this.aom.get_predicted_plane_stride(1);
+    let Up = 0; // this.aom.get_predicted_plane_buffer(1);
+    let Us = 0; // this.aom.get_predicted_plane_stride(1);
 
-    let Vp = this.aom.get_predicted_plane_buffer(2);
-    let Vs = this.aom.get_predicted_plane_stride(2);
+    let Vp = 0; // this.aom.get_predicted_plane_buffer(2);
+    let Vs = 0; // this.aom.get_predicted_plane_stride(2);
     this.drawImage(this.aom.HEAPU8, Yp, Ys, Up, Us, Vp, Vs, compositeOperation);
   }
 
@@ -1362,9 +1362,9 @@ class AppCtrl {
     let h = this.frameSize.h;
 
 
-    let showY = this.showY;
-    let showU = this.showU;
-    let showV = this.showV;
+    let showY = Yp && this.showY;
+    let showU = Up && this.showU;
+    let showV = Vp && this.showV;
 
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {

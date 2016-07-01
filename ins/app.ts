@@ -1001,6 +1001,9 @@ class AppCtrl {
       case "open-tiger":
         file = "media/tiger_30.ivf";
         break;
+      case "open-tiger-60":
+        file = "media/tiger_60.ivf";
+        break;
     }
     this.openFile(file, () => {
       this.playFrameAsync(1, () => {

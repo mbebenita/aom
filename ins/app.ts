@@ -404,110 +404,110 @@ class AppCtrl {
   options = {
     showY: {
       key: "y",
-      description: "Show Y",
-      detail: "Shows Y image plane.",
+      description: "Y",
+      detail: "Display Y image plane.",
       updatesImage: true,
       default: true
     },
     showU: {
       key: "u",
-      description: "Show U",
-      detail: "Shows U image plane.",
+      description: "U",
+      detail: "Display U image plane.",
       updatesImage: true,
       default: true
     },
     showV: {
       key: "v",
-      description: "Show V",
-      detail: "Shows V image plane.",
+      description: "V",
+      detail: "Display V image plane.",
       updatesImage: true,
       default: true
     },
     showOriginalImage: {
       key: "w",
-      description: "Show Original Image",
-      detail: "Shows the loaded .y4m file.",
+      description: "Original Image",
+      detail: "Display loaded .y4m file.",
       updatesImage: true,
       default: false,
       disabled: true
     },
     showDecodedImage: {
       key: "i",
-      description: "Show Image",
-      detail: "Shows image.",
+      description: "Decoded Image",
+      detail: "Display decoded image.",
       updatesImage: true,
       default: true
     },
     showPredictedImage: {
       key: "p",
-      description: "Show Predicted Image",
-      detail: "Shows predicted image.",
+      description: "Predicted Image",
+      detail: "Display the predicted image, or the residual if the decoded image is displayed.",
       updatesImage: true,
       default: false
     },
     showSuperBlockGrid: {
       key: "g",
-      description: "Show SB Grid",
-      detail: "Shows 64x64 mode info grid.",
+      description: "SB Grid",
+      detail: "Display the 64x64 super block grid.",
       default: false
     },
     showTileGrid: {
       key: "l",
-      description: "Show Tile Grid",
-      detail: "Shows tile grid.",
+      description: "Tile Grid",
+      detail: "Display tile grid.",
       default: false
     },
     showTransformSplit: {
       key: "t",
-      description: "Show Transform Grid",
-      detail: "Shows transform blocks.",
+      description: "Transform Grid",
+      detail: "Display transform blocks.",
       default: false
     },
     showBlockSplit: {
       key: "s",
-      description: "Show Split Grid",
-      detail: "Shows block partitions.",
+      description: "Split Grid",
+      detail: "Display block partitions.",
       default: false
     },
     showDering: {
       key: "d",
-      description: "Show Dering",
-      detail: "Shows blocks where the deringing filter is applied.",
+      description: "Dering",
+      detail: "Display blocks where the deringing filter is applied.",
       default: false
     },
     showMotionVectors: {
       key: "m",
-      description: "Show Motion Vectors",
-      detail: "Shows motion vectors, darker colors represent longer vectors.",
+      description: "Motion Vectors",
+      detail: "Display motion vectors, darker colors represent longer vectors.",
       default: false
     },
     showMode: {
       key: "o",
-      description: "Show Mode",
-      detail: "Shows prediction modes.",
+      description: "Mode",
+      detail: "Display prediction modes.",
       default: false
     },
     showBits: {
       key: "b",
-      description: "Show Bits",
-      detail: "Shows bits.",
+      description: "Bits",
+      detail: "Display bits.",
       default: false
     },
     showSkip: {
       key: "k",
-      description: "Show Skip",
-      detail: "Shows skip flags.",
+      description: "Skip",
+      detail: "Display skip flags.",
       default: false
     },
     showInfo: {
       key: "tab",
-      description: "Show Info",
-      detail: "Shows mode info details.",
+      description: "Info",
+      detail: "Display block and frame details.",
       default: window.innerWidth > 1024
     },
     zoomLock: {
       key: "z",
-      description: "Zoom Lock",
+      description: "Cursor Zoom Lock",
       detail: "Locks zoom at the current mouse position.",
       default: false
     }
@@ -1087,14 +1087,14 @@ class AppCtrl {
     bits: {
       values: [],
       show: true,
-      description: "Show frame bits over time.",
-      detail: "Shows the number of bits per frame over time."
+      description: "Plot frame bits over time.",
+      detail: "Plot the number of bits per frame over time."
     },
     errors: {
       values: [],
       show: true,
-      description: "Show frame mse over time.",
-      detail: "Shows the mse per frame over time."
+      description: "Plot frame MSE over time.",
+      detail: "Plot the MSE per frame over time. A .y4m file is required."
     }
   };
 

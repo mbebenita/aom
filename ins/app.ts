@@ -223,6 +223,15 @@ class AOM {
   }
 }
 
+class ErrorMetrics {
+  constructor(public tss: number, public mse: number) {
+    // ...
+  }
+  toString() {
+    return "tss: " + this.tss + ", mse: " + this.mse.toFixed(4);
+  }
+}
+
 class Size {
   constructor(public w: number, public h: number) {
     // ...
@@ -232,6 +241,9 @@ class Size {
   }
   equals(other: Size) {
     return this.w == other.w || this.h == other.h;
+  }
+  area(): number {
+    return this.w * this.h;
   }
   multiplyScalar(scalar: number) {
 		if (isFinite(scalar)) {
@@ -529,8 +541,11 @@ class AppCtrl {
     bits: {
       description: "Bits"
     },
-    error: {
-      description: "Error"
+    blockError: {
+      description: "Block Error"
+    },
+    frameError: {
+      description: "Frame Error"
     }
   };
 
@@ -873,7 +888,7 @@ class AppCtrl {
     let cb = ((size.w + 1) >> 1) * ((size.h + 1) >> 1);
     let cr = cb;
     let frameLength = y + cb + cr;
-    var frames: Y4MFrame [] = [];
+    let frames: Y4MFrame [] = [];
     while (offset < buffer.length) {
       let start = offset;
       while (offset < buffer.length) {
@@ -1066,7 +1081,18 @@ class AppCtrl {
   }
 
   frameStatistics = {
-    bits: []
+    bits: {
+      values: [],
+      show: true,
+      description: "Show frame bits over time.",
+      detail: "Shows the number of bits per frame over time."
+    },
+    errors: {
+      values: [],
+      show: true,
+      description: "Show frame mse over time.",
+      detail: "Shows the mse per frame over time."
+    }
   };
 
   processFrame() {
@@ -1077,7 +1103,8 @@ class AppCtrl {
         miTotalBits += this.aom.get_mi_property(MIProperty.GET_MI_BITS, c, r);
       }
     }
-    this.frameStatistics.bits.push(miTotalBits);
+    this.frameStatistics.bits.values.push(miTotalBits);
+    this.frameStatistics.errors.values.push(this.getFrameError());
   }
 
   uiZoom(value: number) {
@@ -1120,25 +1147,39 @@ class AppCtrl {
     }
     this.drawLayers(this.zoomContext, src, dst);
     this.drawCrosshair(this.zoomContext, mousePosition, dst);
-    this.drawChart();
+    this.drawFrameStatistics();
   }
 
-  drawChart() {
+  drawFrameStatistics() {
     let dst = new Rectangle(0, 0, this.chartCanvas.width, this.chartCanvas.height);
     let ctx = this.chartContext;
     ctx.clearRect(0, 0, dst.w, dst.h);
-    ctx.fillStyle = "#9400D3";
-    let bits = this.frameStatistics.bits;
 
     let barW = 6 * this.ratio;
     let barWPadding = 2 * this.ratio;
     let barWTotal = barW + barWPadding;
     let maxFrames = dst.w / barWTotal | 0;
-    let maxBitsPerFrame = Math.max.apply(null, bits);
-    bits = bits.slice(Math.max(bits.length - maxFrames, 0));
-    for (let i = 0; i < bits.length; i++) {
-      let h = (bits[i] / maxBitsPerFrame) * dst.h | 0;
-      ctx.fillRect(i * barWTotal, dst.h - h, barW, h);
+
+    if (this.frameStatistics.bits.show) {
+      ctx.fillStyle = "#9400D3";
+      let bits = this.frameStatistics.bits.values;
+      let maxBitsPerFrame = Math.max.apply(null, bits);
+      bits = bits.slice(Math.max(bits.length - maxFrames, 0));
+      for (let i = 0; i < bits.length; i++) {
+        let h = (bits[i] / maxBitsPerFrame) * dst.h | 0;
+        ctx.fillRect(i * barWTotal, dst.h - h, barW, h);
+      }
+    }
+
+    if (this.frameStatistics.errors.show) {
+      ctx.fillStyle = "#E91E63";
+      let mses = this.frameStatistics.errors.values.map(x => x ? x.mse : 0);
+      let maxMsePerFrame = Math.max.apply(null, mses);
+      mses = mses.slice(Math.max(mses.length - maxFrames, 0));
+      for (let i = 0; i < mses.length; i++) {
+        let h = (mses[i] / maxMsePerFrame) * dst.h | 0;
+        ctx.fillRect(i * barWTotal, dst.h - h, barW, h);
+      }
     }
   }
 
@@ -1269,8 +1310,8 @@ class AppCtrl {
     if (!this.y4mFile) {
       return;
     }
-    var file = this.y4mFile;
-    var frame = file.frames[this.frameNumber];
+    let file = this.y4mFile;
+    let frame = file.frames[this.frameNumber];
     let Yp = frame.y;
     let Ys = file.size.w;
     let Up = frame.cb;
@@ -1696,12 +1737,44 @@ class AppCtrl {
     return new Vector(x, y);
   }
 
-  getMIError(mi: Vector): number | string {
-    var file = this.y4mFile;
+  getFrameError(): ErrorMetrics {
+    let file = this.y4mFile;
     if (!this.y4mFile) {
-      return "N/A, load a matching .y4m file.";
+      return;
     }
-    var frame = file.frames[this.frameNumber];
+    let frame = file.frames[this.frameNumber];
+
+    let AYp = frame.y;
+    let AYs = file.size.w;
+    let AH = file.buffer;
+
+    let BYp = this.aom.get_plane(0);
+    let BYs = this.aom.get_plane_stride(0);
+    let BH = this.aom.HEAPU8;
+
+    let h = this.frameSize.h;
+    let w = this.frameSize.w;
+
+    let Ap = AYp;
+    let Bp = BYp;
+    let error = 0;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let d = AH[Ap + x] - BH[Bp + x];
+        error += d * d;
+      }
+      Ap += AYs;
+      Bp += BYs;
+    }
+    return new ErrorMetrics(error, error / this.frameSize.area());
+  }
+
+  getMIError(mi: Vector): ErrorMetrics {
+    let file = this.y4mFile;
+    if (!this.y4mFile) {
+      return;
+    }
+    let frame = file.frames[this.frameNumber];
     let AYp = frame.y;
     let AYs = file.size.w;
     let AH = file.buffer;
@@ -1721,7 +1794,7 @@ class AppCtrl {
       Ap += AYs;
       Bp += BYs;
     }
-    return error;
+    return new ErrorMetrics(error, error / size.area());
   }
 
   uiBlockInfo(name: string): string | number {
@@ -1750,8 +1823,14 @@ class AppCtrl {
         return AOMAnalyzerTransformSize[this.aom.get_mi_property(MIProperty.GET_MI_TRANSFORM_SIZE, mi.x, mi.y)];
       case "bits":
         return this.aom.get_mi_property(MIProperty.GET_MI_BITS, mi.x, mi.y);
-      case "error":
-        return this.getMIError(mi);
+      case "blockError": {
+        let error = this.getMIError(mi);
+        return error ? error.toString() : "N/A";
+      }
+      case "frameError": {
+        let error = this.getFrameError();
+        return error ? error.toString() : "N/A";
+      }
     }
     return "?";
   }

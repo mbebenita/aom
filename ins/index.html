@@ -31,6 +31,10 @@
       font-size: 14px;
     }
 
+    md-list-item {
+      height: 10px;
+    }
+
     .keyShortcut {
       font-family: monospace;
       color: blueviolet;
@@ -201,14 +205,16 @@
           </table>
 
           <h1 class="title">Toggle Layers</h1>
-          <div ng-repeat="(name, option) in vm.options" style="padding: 0px; padding-left: 8px;">
-            <md-checkbox ng-model="vm[name]" ng-change="vm.uiChange()" ng-disabled="option.disabled">
+          <md-list>
+            <md-list-item ng-repeat="(name, option) in vm.options">
               {{option.description}} [<span class="keyShortcut">{{option.key}}</span>]
+              <md-checkbox class="md-secondary" ng-model="vm[name]" ng-change="vm.uiChange()" ng-disabled="option.disabled" aria-label="name"></md-checkbox>
               <md-tooltip md-direction="right">
                 {{option.detail}}
               </md-tooltip>
-            </md-checkbox>
-          </div>
+            </md-list-item>
+          </md-list>
+
           <div style="padding: 0px; padding-left: 8px;">
             <md-button class="md-raised" ng-click="vm.uiResetLayers()">
               Reset Layers
@@ -274,7 +280,7 @@
       <md-content ng-hide="!vm.showInfo" style="background-color: #EEEEEE; width: 512px;">
         <canvas id="zoom" oncontextmenu="event.preventDefault()" style="left: 0; bottom: 0; z-index: 1000; image-rendering: pixelated;"
               width=0 height=0></canvas>
-        <div>
+        <div style="background-color: white;">
           <canvas id="chart" oncontextmenu="event.preventDefault()" width=0 height=0></canvas>
         </div>
         <md-tabs md-dynamic-height md-border-bottom>
@@ -283,6 +289,19 @@
               <div ng-repeat="(name, info) in vm.blockInfo" style="padding: 0px; padding-left: 0px;">
                 <span class="key">{{info.description}}:</span> <span class="value">{{ vm.uiBlockInfo(name) }}</span>
               </div>
+            </md-content>
+          </md-tab>
+          <md-tab label="Frame Statistcs">
+            <md-content class="md-padding">
+            <md-list>
+              <md-list-item ng-repeat="(name, statistic) in vm.frameStatistics">
+                {{statistic.description}}
+              <md-checkbox class="md-secondary" ng-model="statistic.show" ng-change="vm.drawFrameStatistics()" aria-label="name"}></md-checkbox>
+              <md-tooltip md-direction="top">
+                {{statistic.detail}}
+              </md-tooltip>
+              </md-list-item>
+            </md-list>
             </md-content>
           </md-tab>
         </md-tabs>

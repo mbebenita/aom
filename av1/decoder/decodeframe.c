@@ -55,6 +55,10 @@
 #include "av1/decoder/dsubexp.h"
 #include "../common/blockd.h"
 
+#if CONFIG_WARPED_MOTION
+#include "av1/common/warped_motion.h"
+#endif  // CONFIG_WARPED_MOTION
+
 #define MAX_AV1_HEADER_SIZE 80
 #define ACCT_STR __func__
 
@@ -123,7 +127,14 @@ static int decode_unsigned_max(struct aom_read_bit_buffer *rb, int max) {
 }
 
 static TX_MODE read_tx_mode(struct aom_read_bit_buffer *rb) {
+#if CONFIG_TX64X64
+  TX_MODE tx_mode =
+      aom_rb_read_bit(rb) ? TX_MODE_SELECT : aom_rb_read_literal(rb, 2);
+  if (tx_mode == ALLOW_32X32) tx_mode += aom_rb_read_bit(rb);
+  return tx_mode;
+#else
   return aom_rb_read_bit(rb) ? TX_MODE_SELECT : aom_rb_read_literal(rb, 2);
+#endif  // CONFIG_TX64X64
 }
 
 static void read_tx_size_probs(FRAME_CONTEXT *fc, aom_reader *r) {
@@ -172,7 +183,6 @@ static void read_inter_mode_probs(FRAME_CONTEXT *fc, aom_reader *r) {
 #endif
 }
 
-#if !CONFIG_EC_ADAPT
 #if CONFIG_EXT_INTER
 static void read_inter_compound_mode_probs(FRAME_CONTEXT *fc, aom_reader *r) {
   int i, j;
@@ -185,6 +195,7 @@ static void read_inter_compound_mode_probs(FRAME_CONTEXT *fc, aom_reader *r) {
   }
 }
 #endif  // CONFIG_EXT_INTER
+#if !CONFIG_EC_ADAPT
 #if !CONFIG_EXT_TX
 static void read_ext_tx_probs(FRAME_CONTEXT *fc, aom_reader *r) {
   int i, j, k;
@@ -319,7 +330,7 @@ static int av1_pvq_decode_helper(od_dec_ctx *dec, int16_t *ref_coeff,
   int off;
   const int is_keyframe = 0;
   const int has_dc_skip = 1;
-  int quant_shift = bs == TX_32X32 ? 1 : 0;
+  int quant_shift = get_tx_scale(bs);
   // DC quantizer for PVQ
   int pvq_dc_quant;
   int lossless = (quant[0] == 0);
@@ -551,7 +562,8 @@ static void decode_reconstruct_tx(AV1_COMMON *cm, MACROBLOCKD *const xd,
 }
 #endif  // CONFIG_VAR_TX
 
-#if !CONFIG_VAR_TX || CONFIG_SUPERTX || (CONFIG_EXT_TX && CONFIG_RECT_TX)
+#if !CONFIG_VAR_TX || CONFIG_SUPERTX || \
+    (!CONFIG_VAR_TX && CONFIG_EXT_TX && CONFIG_RECT_TX)
 static int reconstruct_inter_block(AV1_COMMON *cm, MACROBLOCKD *const xd,
 #if CONFIG_ANS
                                    struct AnsDecoder *const r,
@@ -592,15 +604,6 @@ static int reconstruct_inter_block(AV1_COMMON *cm, MACROBLOCKD *const xd,
   return eob;
 }
 #endif  // !CONFIG_VAR_TX || CONFIG_SUPER_TX
-
-static INLINE void dec_reset_skip_context(MACROBLOCKD *xd) {
-  int i;
-  for (i = 0; i < MAX_MB_PLANE; i++) {
-    struct macroblockd_plane *const pd = &xd->plane[i];
-    memset(pd->above_context, 0, sizeof(ENTROPY_CONTEXT) * pd->n4_w);
-    memset(pd->left_context, 0, sizeof(ENTROPY_CONTEXT) * pd->n4_h);
-  }
-}
 
 static MB_MODE_INFO *set_offsets(AV1_COMMON *const cm, MACROBLOCKD *const xd,
                                  BLOCK_SIZE bsize, int mi_row, int mi_col,
@@ -723,7 +726,7 @@ static void set_param_topblock(AV1_COMMON *const cm, MACROBLOCKD *const xd,
   xd->above_txfm_context = cm->above_txfm_context + mi_col;
   xd->left_txfm_context =
       xd->left_txfm_context_buffer + (mi_row & MAX_MIB_MASK);
-  set_txfm_ctxs(xd->mi[0]->mbmi.tx_size, bw, bh, xd);
+  set_txfm_ctxs(xd->mi[0]->mbmi.tx_size, bw, bh, skip, xd);
 #endif
 }
 
@@ -1431,9 +1434,129 @@ static void decode_block(AV1Decoder *const pbi, MACROBLOCKD *const xd,
   }
 #endif
 
-  if (mbmi->skip) {
-    dec_reset_skip_context(xd);
+  if (mbmi->skip) reset_skip_context(xd, AOMMAX(BLOCK_8X8, bsize));
+
+#if CONFIG_COEF_INTERLEAVE
+  {
+    const struct macroblockd_plane *const pd_y = &xd->plane[0];
+    const struct macroblockd_plane *const pd_c = &xd->plane[1];
+    const TX_SIZE tx_log2_y = mbmi->tx_size;
+    const TX_SIZE tx_log2_c = get_uv_tx_size(mbmi, pd_c);
+    const int tx_sz_y = (1 << tx_log2_y);
+    const int tx_sz_c = (1 << tx_log2_c);
+    const int num_4x4_w_y = pd_y->n4_w;
+    const int num_4x4_h_y = pd_y->n4_h;
+    const int num_4x4_w_c = pd_c->n4_w;
+    const int num_4x4_h_c = pd_c->n4_h;
+    const int max_4x4_w_y = get_max_4x4_size(num_4x4_w_y, xd->mb_to_right_edge,
+                                             pd_y->subsampling_x);
+    const int max_4x4_h_y = get_max_4x4_size(num_4x4_h_y, xd->mb_to_bottom_edge,
+                                             pd_y->subsampling_y);
+    const int max_4x4_w_c = get_max_4x4_size(num_4x4_w_c, xd->mb_to_right_edge,
+                                             pd_c->subsampling_x);
+    const int max_4x4_h_c = get_max_4x4_size(num_4x4_h_c, xd->mb_to_bottom_edge,
+                                             pd_c->subsampling_y);
+
+    // The max_4x4_w/h may be smaller than tx_sz under some corner cases,
+    // i.e. when the SB is splitted by tile boundaries.
+    const int tu_num_w_y = (max_4x4_w_y + tx_sz_y - 1) / tx_sz_y;
+    const int tu_num_h_y = (max_4x4_h_y + tx_sz_y - 1) / tx_sz_y;
+    const int tu_num_w_c = (max_4x4_w_c + tx_sz_c - 1) / tx_sz_c;
+    const int tu_num_h_c = (max_4x4_h_c + tx_sz_c - 1) / tx_sz_c;
+    const int tu_num_y = tu_num_w_y * tu_num_h_y;
+    const int tu_num_c = tu_num_w_c * tu_num_h_c;
+
+    if (!is_inter_block(mbmi)) {
+      int tu_idx_c = 0;
+      int row_y, col_y, row_c, col_c;
+      int plane;
+
+#if CONFIG_PALETTE
+      for (plane = 0; plane <= 1; ++plane) {
+        if (mbmi->palette_mode_info.palette_size[plane])
+          av1_decode_palette_tokens(xd, plane, r);
+      }
+#endif
+
+      for (row_y = 0; row_y < tu_num_h_y; row_y++) {
+        for (col_y = 0; col_y < tu_num_w_y; col_y++) {
+          // luma
+          predict_and_reconstruct_intra_block(
+              cm, xd, r, mbmi, 0, row_y * tx_sz_y, col_y * tx_sz_y, tx_log2_y);
+          // chroma
+          if (tu_idx_c < tu_num_c) {
+            row_c = (tu_idx_c / tu_num_w_c) * tx_sz_c;
+            col_c = (tu_idx_c % tu_num_w_c) * tx_sz_c;
+            predict_and_reconstruct_intra_block(cm, xd, r, mbmi, 1, row_c,
+                                                col_c, tx_log2_c);
+            predict_and_reconstruct_intra_block(cm, xd, r, mbmi, 2, row_c,
+                                                col_c, tx_log2_c);
+            tu_idx_c++;
+          }
+        }
+      }
+
+      // In 422 case, it's possilbe that Chroma has more TUs than Luma
+      while (tu_idx_c < tu_num_c) {
+        row_c = (tu_idx_c / tu_num_w_c) * tx_sz_c;
+        col_c = (tu_idx_c % tu_num_w_c) * tx_sz_c;
+        predict_and_reconstruct_intra_block(cm, xd, r, mbmi, 1, row_c, col_c,
+                                            tx_log2_c);
+        predict_and_reconstruct_intra_block(cm, xd, r, mbmi, 2, row_c, col_c,
+                                            tx_log2_c);
+        tu_idx_c++;
+      }
+    } else {
+      // Prediction
+      av1_build_inter_predictors_sb(xd, mi_row, mi_col, NULL,
+                                    AOMMAX(bsize, BLOCK_8X8));
+
+      // Reconstruction
+      if (!mbmi->skip) {
+        int eobtotal = 0;
+        int tu_idx_c = 0;
+        int row_y, col_y, row_c, col_c;
+
+        for (row_y = 0; row_y < tu_num_h_y; row_y++) {
+          for (col_y = 0; col_y < tu_num_w_y; col_y++) {
+            // luma
+            eobtotal += reconstruct_inter_block(cm, xd, r, mbmi->segment_id, 0,
+                                                row_y * tx_sz_y,
+                                                col_y * tx_sz_y, tx_log2_y);
+            // chroma
+            if (tu_idx_c < tu_num_c) {
+              row_c = (tu_idx_c / tu_num_w_c) * tx_sz_c;
+              col_c = (tu_idx_c % tu_num_w_c) * tx_sz_c;
+              eobtotal += reconstruct_inter_block(cm, xd, r, mbmi->segment_id,
+                                                  1, row_c, col_c, tx_log2_c);
+              eobtotal += reconstruct_inter_block(cm, xd, r, mbmi->segment_id,
+                                                  2, row_c, col_c, tx_log2_c);
+              tu_idx_c++;
+            }
+          }
+        }
+
+        // In 422 case, it's possilbe that Chroma has more TUs than Luma
+        while (tu_idx_c < tu_num_c) {
+          row_c = (tu_idx_c / tu_num_w_c) * tx_sz_c;
+          col_c = (tu_idx_c % tu_num_w_c) * tx_sz_c;
+          eobtotal += reconstruct_inter_block(cm, xd, r, mbmi->segment_id, 1,
+                                              row_c, col_c, tx_log2_c);
+          eobtotal += reconstruct_inter_block(cm, xd, r, mbmi->segment_id, 2,
+                                              row_c, col_c, tx_log2_c);
+          tu_idx_c++;
+        }
+
+        if (bsize >= BLOCK_8X8 && eobtotal == 0)
+#if CONFIG_MISC_FIXES
+          mbmi->has_no_coeffs = 1;
+#else
+          mbmi->skip = 1;
+#endif
+      }
+    }
   }
+#else
   if (!is_inter_block(mbmi)) {
     int plane;
 #if CONFIG_PALETTE
@@ -1445,19 +1568,13 @@ static void decode_block(AV1Decoder *const pbi, MACROBLOCKD *const xd,
     for (plane = 0; plane < MAX_MB_PLANE; ++plane) {
       const struct macroblockd_plane *const pd = &xd->plane[plane];
       const TX_SIZE tx_size = plane ? get_uv_tx_size(mbmi, pd) : mbmi->tx_size;
-      const int num_4x4_w = pd->n4_w;
-      const int num_4x4_h = pd->n4_h;
       const int stepr = tx_size_high_unit[tx_size];
       const int stepc = tx_size_wide_unit[tx_size];
+      const BLOCK_SIZE plane_bsize =
+          get_plane_block_size(AOMMAX(BLOCK_8X8, bsize), pd);
       int row, col;
-      const int max_blocks_wide =
-          num_4x4_w + (xd->mb_to_right_edge >= 0
-                           ? 0
-                           : xd->mb_to_right_edge >> (5 + pd->subsampling_x));
-      const int max_blocks_high =
-          num_4x4_h + (xd->mb_to_bottom_edge >= 0
-                           ? 0
-                           : xd->mb_to_bottom_edge >> (5 + pd->subsampling_y));
+      const int max_blocks_wide = max_block_wide(xd, plane_bsize, plane);
+      const int max_blocks_high = max_block_high(xd, plane_bsize, plane);
 
       for (row = 0; row < max_blocks_high; row += stepr)
         for (col = 0; col < max_blocks_wide; col += stepc)
@@ -1465,8 +1582,36 @@ static void decode_block(AV1Decoder *const pbi, MACROBLOCKD *const xd,
                                               tx_size);
     }
   } else {
-    // Prediction
-    av1_build_inter_predictors_sb(xd, mi_row, mi_col, AOMMAX(bsize, BLOCK_8X8));
+// Prediction
+#if CONFIG_WARPED_MOTION
+    if (mbmi->motion_mode == WARPED_CAUSAL) {
+      int i;
+#if CONFIG_AOM_HIGHBITDEPTH
+      int use_hbd = xd->cur_buf->flags & YV12_FLAG_HIGHBITDEPTH;
+#endif  // CONFIG_AOM_HIGHBITDEPTH
+
+      for (i = 0; i < 3; ++i) {
+        const struct macroblockd_plane *pd = &xd->plane[i];
+
+        av1_warp_plane(&mbmi->wm_params[0],
+#if CONFIG_AOM_HIGHBITDEPTH
+                       xd->cur_buf->flags & YV12_FLAG_HIGHBITDEPTH, xd->bd,
+#endif  // CONFIG_AOM_HIGHBITDEPTH
+                       pd->pre[0].buf0, pd->pre[0].width, pd->pre[0].height,
+                       pd->pre[0].stride, pd->dst.buf,
+                       ((mi_col * MI_SIZE) >> pd->subsampling_x),
+                       ((mi_row * MI_SIZE) >> pd->subsampling_y),
+                       xd->n8_w * (8 >> pd->subsampling_x),
+                       xd->n8_h * (8 >> pd->subsampling_y), pd->dst.stride,
+                       pd->subsampling_x, pd->subsampling_y, 16, 16, 0);
+      }
+    } else {
+#endif  // CONFIG_WARPED_MOTION
+      av1_build_inter_predictors_sb(xd, mi_row, mi_col, NULL,
+                                    AOMMAX(bsize, BLOCK_8X8));
+#if CONFIG_WARPED_MOTION
+    }
+#endif  // CONFIG_WARPED_MOTION
 #if CONFIG_MOTION_VAR
     if (mbmi->motion_mode == OBMC_CAUSAL) {
       av1_build_obmc_inter_predictors_sb(cm, xd, mi_row, mi_col);
@@ -1510,62 +1655,25 @@ static void decode_block(AV1Decoder *const pbi, MACROBLOCKD *const xd,
 
       for (plane = 0; plane < MAX_MB_PLANE; ++plane) {
         const struct macroblockd_plane *const pd = &xd->plane[plane];
-        int block_width = pd->width;
-        int block_height = pd->height;
+        const BLOCK_SIZE plane_bsize =
+            get_plane_block_size(AOMMAX(BLOCK_8X8, bsize), pd);
+        const int max_blocks_wide = max_block_wide(xd, plane_bsize, plane);
+        const int max_blocks_high = max_block_high(xd, plane_bsize, plane);
         int row, col;
 #if CONFIG_VAR_TX
-        // TODO(jingning): This can be simplified for decoder performance.
-        const BLOCK_SIZE plane_bsize =
-            get_plane_block_size(AOMMAX(bsize, BLOCK_8X8), pd);
-        const TX_SIZE max_tx_size = max_txsize_lookup[plane_bsize];
+        const TX_SIZE max_tx_size = max_txsize_rect_lookup[plane_bsize];
         const int bh_var_tx = tx_size_high_unit[max_tx_size];
         const int bw_var_tx = tx_size_wide_unit[max_tx_size];
-#if CONFIG_EXT_TX && CONFIG_RECT_TX
-        if (is_rect_tx(mbmi->tx_size)) {
-          const TX_SIZE tx_size =
-              plane ? get_uv_tx_size(mbmi, pd) : mbmi->tx_size;
-          const int stepr = tx_size_high_unit[tx_size];
-          const int stepc = tx_size_wide_unit[tx_size];
-          int max_blocks_wide =
-              block_width +
-              (xd->mb_to_right_edge >= 0 ? 0 : xd->mb_to_right_edge >>
-                                                   (3 + pd->subsampling_x));
-          int max_blocks_high =
-              block_height +
-              (xd->mb_to_bottom_edge >= 0 ? 0 : xd->mb_to_bottom_edge >>
-                                                    (3 + pd->subsampling_y));
-          max_blocks_wide >>= tx_size_wide_log2[0];
-          max_blocks_high >>= tx_size_wide_log2[0];
-          for (row = 0; row < max_blocks_high; row += stepr)
-            for (col = 0; col < max_blocks_wide; col += stepc)
-              eobtotal += reconstruct_inter_block(cm, xd, r, mbmi->segment_id,
-                                                  plane, row, col, tx_size);
-        } else {
-#endif
-          block_width >>= tx_size_wide_log2[0];
-          block_height >>= tx_size_wide_log2[0];
-          for (row = 0; row < block_height; row += bh_var_tx)
-            for (col = 0; col < block_width; col += bw_var_tx)
-              decode_reconstruct_tx(cm, xd, r, mbmi, plane, plane_bsize, row,
-                                    col, max_tx_size, &eobtotal);
-#if CONFIG_EXT_TX && CONFIG_RECT_TX
-        }
-#endif
+
+        for (row = 0; row < max_blocks_high; row += bh_var_tx)
+          for (col = 0; col < max_blocks_wide; col += bw_var_tx)
+            decode_reconstruct_tx(cm, xd, r, mbmi, plane, plane_bsize, row, col,
+                                  max_tx_size, &eobtotal);
 #else
         const TX_SIZE tx_size =
             plane ? get_uv_tx_size(mbmi, pd) : mbmi->tx_size;
         const int stepr = tx_size_high_unit[tx_size];
         const int stepc = tx_size_wide_unit[tx_size];
-        int max_blocks_wide =
-            block_width +
-            (xd->mb_to_right_edge >= 0 ? 0 : xd->mb_to_right_edge >>
-                                                 (3 + pd->subsampling_x));
-        int max_blocks_high =
-            block_height +
-            (xd->mb_to_bottom_edge >= 0 ? 0 : xd->mb_to_bottom_edge >>
-                                                  (3 + pd->subsampling_y));
-        max_blocks_wide >>= tx_size_wide_log2[0];
-        max_blocks_high >>= tx_size_wide_log2[0];
         for (row = 0; row < max_blocks_high; row += stepr)
           for (col = 0; col < max_blocks_wide; col += stepc)
             eobtotal += reconstruct_inter_block(cm, xd, r, mbmi->segment_id,
@@ -1574,6 +1682,7 @@ static void decode_block(AV1Decoder *const pbi, MACROBLOCKD *const xd,
       }
     }
   }
+#endif
 
   xd->corrupted |= aom_reader_has_error(r);
 }
@@ -2240,11 +2349,65 @@ static void decode_restoration_mode(AV1_COMMON *cm,
                                     struct aom_read_bit_buffer *rb) {
   RestorationInfo *rsi = &cm->rst_info;
   if (aom_rb_read_bit(rb)) {
-    rsi->frame_restoration_type =
-        aom_rb_read_bit(rb) ? RESTORE_WIENER : RESTORE_BILATERAL;
+    if (aom_rb_read_bit(rb))
+      rsi->frame_restoration_type =
+          (aom_rb_read_bit(rb) ? RESTORE_WIENER : RESTORE_BILATERAL);
+    else
+      rsi->frame_restoration_type =
+          (aom_rb_read_bit(rb) ? RESTORE_DOMAINTXFMRF : RESTORE_SGRPROJ);
+    // rsi->frame_restoration_type = RESTORE_SGRPROJ;
   } else {
     rsi->frame_restoration_type =
         aom_rb_read_bit(rb) ? RESTORE_SWITCHABLE : RESTORE_NONE;
+  }
+}
+
+static void read_wiener_filter(WienerInfo *wiener_info, aom_reader *rb) {
+  wiener_info->vfilter[0] =
+      aom_read_literal(rb, WIENER_FILT_TAP0_BITS, ACCT_STR) +
+      WIENER_FILT_TAP0_MINV;
+  wiener_info->vfilter[1] =
+      aom_read_literal(rb, WIENER_FILT_TAP1_BITS, ACCT_STR) +
+      WIENER_FILT_TAP1_MINV;
+  wiener_info->vfilter[2] =
+      aom_read_literal(rb, WIENER_FILT_TAP2_BITS, ACCT_STR) +
+      WIENER_FILT_TAP2_MINV;
+  wiener_info->hfilter[0] =
+      aom_read_literal(rb, WIENER_FILT_TAP0_BITS, ACCT_STR) +
+      WIENER_FILT_TAP0_MINV;
+  wiener_info->hfilter[1] =
+      aom_read_literal(rb, WIENER_FILT_TAP1_BITS, ACCT_STR) +
+      WIENER_FILT_TAP1_MINV;
+  wiener_info->hfilter[2] =
+      aom_read_literal(rb, WIENER_FILT_TAP2_BITS, ACCT_STR) +
+      WIENER_FILT_TAP2_MINV;
+}
+
+static void read_sgrproj_filter(SgrprojInfo *sgrproj_info, aom_reader *rb) {
+  sgrproj_info->ep = aom_read_literal(rb, SGRPROJ_PARAMS_BITS, ACCT_STR);
+  sgrproj_info->xqd[0] =
+      aom_read_literal(rb, SGRPROJ_PRJ_BITS, ACCT_STR) + SGRPROJ_PRJ_MIN0;
+  sgrproj_info->xqd[1] =
+      aom_read_literal(rb, SGRPROJ_PRJ_BITS, ACCT_STR) + SGRPROJ_PRJ_MIN1;
+}
+
+static void read_domaintxfmrf_filter(DomaintxfmrfInfo *domaintxfmrf_info,
+                                     aom_reader *rb) {
+  domaintxfmrf_info->sigma_r =
+      aom_read_literal(rb, DOMAINTXFMRF_PARAMS_BITS, ACCT_STR);
+}
+
+static void read_bilateral_filter(const AV1_COMMON *cm,
+                                  BilateralInfo *bilateral_info,
+                                  aom_reader *rb) {
+  int s;
+  for (s = 0; s < BILATERAL_SUBTILES; ++s) {
+    if (aom_read(rb, RESTORE_NONE_BILATERAL_PROB, ACCT_STR)) {
+      bilateral_info->level[s] =
+          aom_read_literal(rb, av1_bilateral_level_bits(cm), ACCT_STR);
+    } else {
+      bilateral_info->level[s] = -1;
+    }
   }
 }
 
@@ -2263,45 +2426,32 @@ static void decode_restoration(AV1_COMMON *cm, aom_reader *rb) {
       rsi->wiener_info = (WienerInfo *)aom_realloc(
           rsi->wiener_info, sizeof(*rsi->wiener_info) * ntiles);
       assert(rsi->wiener_info != NULL);
+      rsi->sgrproj_info = (SgrprojInfo *)aom_realloc(
+          rsi->sgrproj_info, sizeof(*rsi->sgrproj_info) * ntiles);
+      assert(rsi->sgrproj_info != NULL);
+      rsi->domaintxfmrf_info = (DomaintxfmrfInfo *)aom_realloc(
+          rsi->domaintxfmrf_info, sizeof(*rsi->domaintxfmrf_info) * ntiles);
+      assert(rsi->domaintxfmrf_info != NULL);
       for (i = 0; i < ntiles; ++i) {
         rsi->restoration_type[i] =
             aom_read_tree(rb, av1_switchable_restore_tree,
                           cm->fc->switchable_restore_prob, ACCT_STR);
         if (rsi->restoration_type[i] == RESTORE_WIENER) {
           rsi->wiener_info[i].level = 1;
-          rsi->wiener_info[i].vfilter[0] =
-              aom_read_literal(rb, WIENER_FILT_TAP0_BITS, ACCT_STR) +
-              WIENER_FILT_TAP0_MINV;
-          rsi->wiener_info[i].vfilter[1] =
-              aom_read_literal(rb, WIENER_FILT_TAP1_BITS, ACCT_STR) +
-              WIENER_FILT_TAP1_MINV;
-          rsi->wiener_info[i].vfilter[2] =
-              aom_read_literal(rb, WIENER_FILT_TAP2_BITS, ACCT_STR) +
-              WIENER_FILT_TAP2_MINV;
-          rsi->wiener_info[i].hfilter[0] =
-              aom_read_literal(rb, WIENER_FILT_TAP0_BITS, ACCT_STR) +
-              WIENER_FILT_TAP0_MINV;
-          rsi->wiener_info[i].hfilter[1] =
-              aom_read_literal(rb, WIENER_FILT_TAP1_BITS, ACCT_STR) +
-              WIENER_FILT_TAP1_MINV;
-          rsi->wiener_info[i].hfilter[2] =
-              aom_read_literal(rb, WIENER_FILT_TAP2_BITS, ACCT_STR) +
-              WIENER_FILT_TAP2_MINV;
+          read_wiener_filter(&rsi->wiener_info[i], rb);
         } else if (rsi->restoration_type[i] == RESTORE_BILATERAL) {
-          int s;
-          for (s = 0; s < BILATERAL_SUBTILES; ++s) {
 #if BILATERAL_SUBTILES == 0
-            rsi->bilateral_info[i].level[s] =
-                aom_read_literal(rb, av1_bilateral_level_bits(cm), ACCT_STR);
+          rsi->bilateral_info[i].level[0] =
+              aom_read_literal(rb, av1_bilateral_level_bits(cm), ACCT_STR);
 #else
-            if (aom_read(rb, RESTORE_NONE_BILATERAL_PROB, ACCT_STR)) {
-              rsi->bilateral_info[i].level[s] =
-                  aom_read_literal(rb, av1_bilateral_level_bits(cm), ACCT_STR);
-            } else {
-              rsi->bilateral_info[i].level[s] = -1;
-            }
+          read_bilateral_filter(cm, &rsi->bilateral_info[i], rb);
 #endif
-          }
+        } else if (rsi->restoration_type[i] == RESTORE_SGRPROJ) {
+          rsi->sgrproj_info[i].level = 1;
+          read_sgrproj_filter(&rsi->sgrproj_info[i], rb);
+        } else if (rsi->restoration_type[i] == RESTORE_DOMAINTXFMRF) {
+          rsi->domaintxfmrf_info[i].level = 1;
+          read_domaintxfmrf_filter(&rsi->domaintxfmrf_info[i], rb);
         }
       }
     } else if (rsi->frame_restoration_type == RESTORE_WIENER) {
@@ -2310,50 +2460,51 @@ static void decode_restoration(AV1_COMMON *cm, aom_reader *rb) {
       assert(rsi->wiener_info != NULL);
       for (i = 0; i < ntiles; ++i) {
         if (aom_read(rb, RESTORE_NONE_WIENER_PROB, ACCT_STR)) {
-          rsi->wiener_info[i].level = 1;
           rsi->restoration_type[i] = RESTORE_WIENER;
-          rsi->wiener_info[i].vfilter[0] =
-              aom_read_literal(rb, WIENER_FILT_TAP0_BITS, ACCT_STR) +
-              WIENER_FILT_TAP0_MINV;
-          rsi->wiener_info[i].vfilter[1] =
-              aom_read_literal(rb, WIENER_FILT_TAP1_BITS, ACCT_STR) +
-              WIENER_FILT_TAP1_MINV;
-          rsi->wiener_info[i].vfilter[2] =
-              aom_read_literal(rb, WIENER_FILT_TAP2_BITS, ACCT_STR) +
-              WIENER_FILT_TAP2_MINV;
-          rsi->wiener_info[i].hfilter[0] =
-              aom_read_literal(rb, WIENER_FILT_TAP0_BITS, ACCT_STR) +
-              WIENER_FILT_TAP0_MINV;
-          rsi->wiener_info[i].hfilter[1] =
-              aom_read_literal(rb, WIENER_FILT_TAP1_BITS, ACCT_STR) +
-              WIENER_FILT_TAP1_MINV;
-          rsi->wiener_info[i].hfilter[2] =
-              aom_read_literal(rb, WIENER_FILT_TAP2_BITS, ACCT_STR) +
-              WIENER_FILT_TAP2_MINV;
+          rsi->wiener_info[i].level = 1;
+          read_wiener_filter(&rsi->wiener_info[i], rb);
         } else {
           rsi->wiener_info[i].level = 0;
           rsi->restoration_type[i] = RESTORE_NONE;
         }
       }
-    } else {
+    } else if (rsi->frame_restoration_type == RESTORE_BILATERAL) {
       rsi->bilateral_info = (BilateralInfo *)aom_realloc(
           rsi->bilateral_info, sizeof(*rsi->bilateral_info) * ntiles);
       assert(rsi->bilateral_info != NULL);
       for (i = 0; i < ntiles; ++i) {
-        int s;
         rsi->restoration_type[i] = RESTORE_BILATERAL;
-        for (s = 0; s < BILATERAL_SUBTILES; ++s) {
-          if (aom_read(rb, RESTORE_NONE_BILATERAL_PROB, ACCT_STR)) {
-            rsi->bilateral_info[i].level[s] =
-                aom_read_literal(rb, av1_bilateral_level_bits(cm), ACCT_STR);
-          } else {
-            rsi->bilateral_info[i].level[s] = -1;
-          }
+        read_bilateral_filter(cm, &rsi->bilateral_info[i], rb);
+      }
+    } else if (rsi->frame_restoration_type == RESTORE_SGRPROJ) {
+      rsi->sgrproj_info = (SgrprojInfo *)aom_realloc(
+          rsi->sgrproj_info, sizeof(*rsi->sgrproj_info) * ntiles);
+      assert(rsi->sgrproj_info != NULL);
+      for (i = 0; i < ntiles; ++i) {
+        if (aom_read(rb, RESTORE_NONE_SGRPROJ_PROB, ACCT_STR)) {
+          rsi->restoration_type[i] = RESTORE_SGRPROJ;
+          rsi->sgrproj_info[i].level = 1;
+          read_sgrproj_filter(&rsi->sgrproj_info[i], rb);
+        } else {
+          rsi->sgrproj_info[i].level = 0;
+          rsi->restoration_type[i] = RESTORE_NONE;
+        }
+      }
+    } else if (rsi->frame_restoration_type == RESTORE_DOMAINTXFMRF) {
+      rsi->domaintxfmrf_info = (DomaintxfmrfInfo *)aom_realloc(
+          rsi->domaintxfmrf_info, sizeof(*rsi->domaintxfmrf_info) * ntiles);
+      assert(rsi->domaintxfmrf_info != NULL);
+      for (i = 0; i < ntiles; ++i) {
+        if (aom_read(rb, RESTORE_NONE_DOMAINTXFMRF_PROB, ACCT_STR)) {
+          rsi->restoration_type[i] = RESTORE_DOMAINTXFMRF;
+          rsi->domaintxfmrf_info[i].level = 1;
+          read_domaintxfmrf_filter(&rsi->domaintxfmrf_info[i], rb);
+        } else {
+          rsi->domaintxfmrf_info[i].level = 0;
+          rsi->restoration_type[i] = RESTORE_NONE;
         }
       }
     }
-  } else {
-    rsi->frame_restoration_type = RESTORE_NONE;
   }
 }
 #endif  // CONFIG_LOOP_RESTORATION
@@ -2536,7 +2687,7 @@ static void setup_segmentation_dequant(AV1_COMMON *const cm) {
   }
 }
 
-static InterpFilter read_interp_filter(struct aom_read_bit_buffer *rb) {
+static InterpFilter read_frame_interp_filter(struct aom_read_bit_buffer *rb) {
   return aom_rb_read_bit(rb) ? SWITCHABLE
                              : aom_rb_read_literal(rb, LOG_SWITCHABLE_FILTERS);
 }
@@ -3383,11 +3534,6 @@ static const uint8_t *decode_tiles_mt(AV1Decoder *pbi, const uint8_t *data,
 
   assert(tile_cols * tile_rows > 1);
 
-#if CONFIG_ANS
-  // TODO(any): This might just work now. Needs to be tested.
-  abort();  // FIXME: Tile parsing broken
-#endif      // CONFIG_ANS
-
   // TODO(jzern): See if we can remove the restriction of passing in max
   // threads to the decoder.
   if (pbi->num_tile_workers == 0) {
@@ -3831,7 +3977,7 @@ static size_t read_uncompressed_header(AV1Decoder *pbi,
 #endif
 
       cm->allow_high_precision_mv = aom_rb_read_bit(rb);
-      cm->interp_filter = read_interp_filter(rb);
+      cm->interp_filter = read_frame_interp_filter(rb);
 
       for (i = 0; i < INTER_REFS_PER_FRAME; ++i) {
         RefBuffer *const ref_buf = &cm->frame_refs[i];
@@ -4042,58 +4188,60 @@ static void read_supertx_probs(FRAME_CONTEXT *fc, aom_reader *r) {
 #endif  // CONFIG_SUPERTX
 
 #if CONFIG_GLOBAL_MOTION
-static void read_global_motion_params(Global_Motion_Params *params,
+static void read_global_motion_params(WarpedMotionParams *params,
                                       aom_prob *probs, aom_reader *r) {
-  GLOBAL_MOTION_TYPE gmtype =
+  TransformationType type =
       aom_read_tree(r, av1_global_motion_types_tree, probs, ACCT_STR);
-  params->gmtype = gmtype;
-  params->motion_params.wmtype = gm_to_trans_type(gmtype);
-  switch (gmtype) {
-    case GLOBAL_ZERO: break;
-    case GLOBAL_AFFINE:
-      params->motion_params.wmmat[4] =
-          (aom_read_primitive_symmetric(r, GM_ABS_ALPHA_BITS) *
-           GM_ALPHA_DECODE_FACTOR);
-      params->motion_params.wmmat[5] =
-          aom_read_primitive_symmetric(r, GM_ABS_ALPHA_BITS) *
-              GM_ALPHA_DECODE_FACTOR +
-          (1 << WARPEDMODEL_PREC_BITS);
+  set_default_gmparams(params);
+  params->wmtype = type;
+  switch (type) {
+    case HOMOGRAPHY:
+      params->wmmat[6] = aom_read_primitive_symmetric(r, GM_ABS_ROW3HOMO_BITS) *
+                         GM_ROW3HOMO_DECODE_FACTOR;
+      params->wmmat[7] = aom_read_primitive_symmetric(r, GM_ABS_ROW3HOMO_BITS) *
+                         GM_ROW3HOMO_DECODE_FACTOR;
+    case AFFINE:
+    case ROTZOOM:
+      params->wmmat[2] = aom_read_primitive_symmetric(r, GM_ABS_ALPHA_BITS) *
+                             GM_ALPHA_DECODE_FACTOR +
+                         (1 << WARPEDMODEL_PREC_BITS);
+      params->wmmat[3] = aom_read_primitive_symmetric(r, GM_ABS_ALPHA_BITS) *
+                         GM_ALPHA_DECODE_FACTOR;
+      if (type == AFFINE || type == HOMOGRAPHY) {
+        params->wmmat[4] = aom_read_primitive_symmetric(r, GM_ABS_ALPHA_BITS) *
+                           GM_ALPHA_DECODE_FACTOR;
+        params->wmmat[5] = aom_read_primitive_symmetric(r, GM_ABS_ALPHA_BITS) *
+                               GM_ALPHA_DECODE_FACTOR +
+                           (1 << WARPEDMODEL_PREC_BITS);
+      } else {
+        params->wmmat[4] = -params->wmmat[3];
+        params->wmmat[5] = params->wmmat[2];
+      }
     // fallthrough intended
-    case GLOBAL_ROTZOOM:
-      params->motion_params.wmmat[2] =
-          aom_read_primitive_symmetric(r, GM_ABS_ALPHA_BITS) *
-          GM_ALPHA_DECODE_FACTOR;
-      params->motion_params.wmmat[3] =
-          (aom_read_primitive_symmetric(r, GM_ABS_ALPHA_BITS) *
-           GM_ALPHA_DECODE_FACTOR) +
-          (1 << WARPEDMODEL_PREC_BITS);
-    // fallthrough intended
-    case GLOBAL_TRANSLATION:
-      params->motion_params.wmmat[0] =
-          aom_read_primitive_symmetric(r, GM_ABS_TRANS_BITS) *
-          GM_TRANS_DECODE_FACTOR;
-      params->motion_params.wmmat[1] =
-          aom_read_primitive_symmetric(r, GM_ABS_TRANS_BITS) *
-          GM_TRANS_DECODE_FACTOR;
+    case TRANSLATION:
+      params->wmmat[0] = aom_read_primitive_symmetric(r, GM_ABS_TRANS_BITS) *
+                         GM_TRANS_DECODE_FACTOR;
+      params->wmmat[1] = aom_read_primitive_symmetric(r, GM_ABS_TRANS_BITS) *
+                         GM_TRANS_DECODE_FACTOR;
       break;
+    case IDENTITY: break;
     default: assert(0);
   }
 }
 
 static void read_global_motion(AV1_COMMON *cm, aom_reader *r) {
   int frame;
-  memset(cm->global_motion, 0, sizeof(cm->global_motion));
   for (frame = LAST_FRAME; frame <= ALTREF_FRAME; ++frame) {
     read_global_motion_params(&cm->global_motion[frame],
                               cm->fc->global_motion_types_prob, r);
     /*
-          printf("Dec Ref %d [%d]: %d %d %d %d\n",
-                 frame, cm->current_video_frame,
-                 cm->global_motion[frame].motion_params.wmmat[0].as_mv.row,
-                 cm->global_motion[frame].motion_params.wmmat[0].as_mv.col,
-                 cm->global_motion[frame].motion_params.wmmat[1].as_mv.row,
-                 cm->global_motion[frame].motion_params.wmmat[1].as_mv.col);
-    */
+    printf("Dec Ref %d [%d/%d]: %d %d %d %d\n",
+           frame, cm->current_video_frame, cm->show_frame,
+           cm->global_motion[frame].wmmat[0],
+           cm->global_motion[frame].wmmat[1],
+           cm->global_motion[frame].wmmat[2],
+           cm->global_motion[frame].wmmat[3]);
+           */
   }
 }
 #endif  // CONFIG_GLOBAL_MOTION
@@ -4107,7 +4255,7 @@ static int read_compressed_header(AV1Decoder *pbi, const uint8_t *data,
   FRAME_CONTEXT *const fc = cm->fc;
   aom_reader r;
   int k, i;
-#if !CONFIG_EC_ADAPT
+#if !CONFIG_EC_ADAPT || CONFIG_EXT_INTRA
   int j;
 #endif
 
@@ -4134,12 +4282,6 @@ static int read_compressed_header(AV1Decoder *pbi, const uint8_t *data,
 #if CONFIG_VAR_TX
   for (k = 0; k < TXFM_PARTITION_CONTEXTS; ++k)
     av1_diff_update_prob(&r, &fc->txfm_partition_prob[k], ACCT_STR);
-#if CONFIG_EXT_TX && CONFIG_RECT_TX
-  if (cm->tx_mode == TX_MODE_SELECT) {
-    for (i = 1; i < MAX_TX_DEPTH; ++i)
-      av1_diff_update_prob(&r, &fc->rect_tx_prob[i], ACCT_STR);
-  }
-#endif  // CONFIG_EXT_TX && CONFIG_RECT_TX
 #endif  // CONFIG_VAR_TX
 #endif  // !CONFIG_PVQ
   for (k = 0; k < SKIP_CONTEXTS; ++k)
@@ -4220,8 +4362,8 @@ static int read_compressed_header(AV1Decoder *pbi, const uint8_t *data,
     }
     if (cm->reference_mode != SINGLE_REFERENCE) {
       for (i = 0; i < BLOCK_SIZES; i++) {
-        if (is_interinter_wedge_used(i)) {
-          av1_diff_update_prob(&r, &fc->wedge_interinter_prob[i], ACCT_STR);
+        for (j = 0; j < COMPOUND_TYPES - 1; j++) {
+          av1_diff_update_prob(&r, &fc->compound_type_prob[i][j], ACCT_STR);
         }
       }
     }
@@ -4314,8 +4456,9 @@ static void debug_check_frame_counts(const AV1_COMMON *const cm) {
                  sizeof(cm->counts.interintra)));
   assert(!memcmp(cm->counts.wedge_interintra, zero_counts.wedge_interintra,
                  sizeof(cm->counts.wedge_interintra)));
-  assert(!memcmp(cm->counts.wedge_interinter, zero_counts.wedge_interinter,
-                 sizeof(cm->counts.wedge_interinter)));
+  assert(!memcmp(cm->counts.compound_interinter,
+                 zero_counts.compound_interinter,
+                 sizeof(cm->counts.compound_interinter)));
 #endif  // CONFIG_EXT_INTER
 #if CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
   assert(!memcmp(cm->counts.motion_mode, zero_counts.motion_mode,
@@ -4433,7 +4576,7 @@ void av1_decode_frame(AV1Decoder *pbi, const uint8_t *data,
     aom_internal_error(&cm->error, AOM_CODEC_CORRUPT_FRAME,
                        "Truncated packet or corrupt header length");
 
-#if CONFIG_SIMP_MV_PRED
+#if CONFIG_REF_MV
   cm->setup_mi(cm);
 #endif
 

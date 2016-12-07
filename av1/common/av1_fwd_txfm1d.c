@@ -1,11 +1,12 @@
 /*
- *  Copyright (c) 2015 The WebM project authors. All Rights Reserved.
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved
  *
- *  Use of this source code is governed by a BSD-style license
- *  that can be found in the LICENSE file in the root of the source
- *  tree. An additional intellectual property rights grant can be found
- *  in the file PATENTS.  All contributing project authors may
- *  be found in the AUTHORS file in the root of the source tree.
+ * This source code is subject to the terms of the BSD 2 Clause License and
+ * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
+ * was not distributed with this source code in the LICENSE file, you can
+ * obtain it at www.aomedia.org/license/software. If the Alliance for Open
+ * Media Patent License 1.0 was not distributed with this source code in the
+ * PATENTS file, you can obtain it at www.aomedia.org/license/patent.
  */
 
 #include <stdlib.h>
@@ -735,7 +736,6 @@ void av1_fadst4_new(const int32_t *input, int32_t *output,
 
   // stage 3
   stage++;
-  cospi = cospi_arr[cos_bit[stage] - cos_bit_min];
   bf0 = step;
   bf1 = output;
   bf1[0] = bf0[0] + bf0[2];
@@ -808,7 +808,6 @@ void av1_fadst8_new(const int32_t *input, int32_t *output,
 
   // stage 3
   stage++;
-  cospi = cospi_arr[cos_bit[stage] - cos_bit_min];
   bf0 = step;
   bf1 = output;
   bf1[0] = bf0[0] + bf0[4];
@@ -838,7 +837,6 @@ void av1_fadst8_new(const int32_t *input, int32_t *output,
 
   // stage 5
   stage++;
-  cospi = cospi_arr[cos_bit[stage] - cos_bit_min];
   bf0 = step;
   bf1 = output;
   bf1[0] = bf0[0] + bf0[2];

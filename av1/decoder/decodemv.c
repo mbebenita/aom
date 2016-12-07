@@ -19,6 +19,9 @@
 #include "av1/common/pred_common.h"
 #include "av1/common/reconinter.h"
 #include "av1/common/seg_common.h"
+#if CONFIG_WARPED_MOTION
+#include "av1/common/warped_motion.h"
+#endif  // CONFIG_WARPED_MOTION
 
 #include "av1/decoder/decodeframe.h"
 #include "av1/decoder/decodemv.h"
@@ -252,18 +255,26 @@ static void read_drl_idx(const AV1_COMMON *cm, MACROBLOCKD *xd,
 #if CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
 static MOTION_MODE read_motion_mode(AV1_COMMON *cm, MACROBLOCKD *xd,
                                     MB_MODE_INFO *mbmi, aom_reader *r) {
-  if (is_motion_variation_allowed(mbmi)) {
-    int motion_mode;
-    FRAME_COUNTS *counts = xd->counts;
+  MOTION_MODE last_motion_mode_allowed = motion_mode_allowed(mbmi);
+  int motion_mode;
+  FRAME_COUNTS *counts = xd->counts;
 
+  if (last_motion_mode_allowed == SIMPLE_TRANSLATION) return SIMPLE_TRANSLATION;
+#if CONFIG_MOTION_VAR && CONFIG_WARPED_MOTION
+  if (last_motion_mode_allowed == OBMC_CAUSAL) {
+    motion_mode = aom_read(r, cm->fc->obmc_prob[mbmi->sb_type], ACCT_STR);
+    if (counts) ++counts->obmc[mbmi->sb_type][motion_mode];
+    return (MOTION_MODE)(SIMPLE_TRANSLATION + motion_mode);
+  } else {
+#endif  // CONFIG_MOTION_VAR && CONFIG_WARPED_MOTION
     motion_mode =
         aom_read_tree(r, av1_motion_mode_tree,
                       cm->fc->motion_mode_prob[mbmi->sb_type], ACCT_STR);
     if (counts) ++counts->motion_mode[mbmi->sb_type][motion_mode];
     return (MOTION_MODE)(SIMPLE_TRANSLATION + motion_mode);
-  } else {
-    return SIMPLE_TRANSLATION;
+#if CONFIG_MOTION_VAR && CONFIG_WARPED_MOTION
   }
+#endif  // CONFIG_MOTION_VAR && CONFIG_WARPED_MOTION
 }
 #endif  // CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
 
@@ -1034,37 +1045,66 @@ static void read_ref_frames(AV1_COMMON *const cm, MACROBLOCKD *const xd,
   }
 }
 
-static INLINE InterpFilter read_interp_filter(AV1_COMMON *const cm,
-                                              MACROBLOCKD *const xd,
+static INLINE void read_mb_interp_filter(AV1_COMMON *const cm,
+                                         MACROBLOCKD *const xd,
+                                         MB_MODE_INFO *const mbmi,
+                                         aom_reader *r) {
+  FRAME_COUNTS *counts = xd->counts;
 #if CONFIG_DUAL_FILTER
-                                              int dir,
-#endif
-                                              aom_reader *r) {
-#if CONFIG_EXT_INTERP
-  if (!av1_is_interp_needed(xd)) return EIGHTTAP_REGULAR;
-#endif
+  int dir;
   if (cm->interp_filter != SWITCHABLE) {
-    return cm->interp_filter;
+    for (dir = 0; dir < 4; ++dir) mbmi->interp_filter[dir] = cm->interp_filter;
   } else {
-#if CONFIG_DUAL_FILTER
-    const int ctx = av1_get_pred_context_switchable_interp(xd, dir);
-#else
-    const int ctx = av1_get_pred_context_switchable_interp(xd);
-#endif
-    FRAME_COUNTS *counts = xd->counts;
+    for (dir = 0; dir < 2; ++dir) {
+      const int ctx = av1_get_pred_context_switchable_interp(xd, dir);
+      mbmi->interp_filter[dir] = EIGHTTAP_REGULAR;
+
+      if (has_subpel_mv_component(xd->mi[0], xd, dir) ||
+          (mbmi->ref_frame[1] > INTRA_FRAME &&
+           has_subpel_mv_component(xd->mi[0], xd, dir + 2))) {
 #if CONFIG_DAALA_EC
-    const InterpFilter type =
+        mbmi->interp_filter[dir] =
+            (InterpFilter)av1_switchable_interp_inv[aom_read_symbol(
+                r, cm->fc->switchable_interp_cdf[ctx], SWITCHABLE_FILTERS,
+                ACCT_STR)];
+#else
+        mbmi->interp_filter[dir] = (InterpFilter)aom_read_tree(
+            r, av1_switchable_interp_tree, cm->fc->switchable_interp_prob[ctx],
+            ACCT_STR);
+#endif
+        if (counts) ++counts->switchable_interp[ctx][mbmi->interp_filter[dir]];
+      }
+    }
+    // The index system works as:
+    // (0, 1) -> (vertical, horizontal) filter types for the first ref frame.
+    // (2, 3) -> (vertical, horizontal) filter types for the second ref frame.
+    mbmi->interp_filter[2] = mbmi->interp_filter[0];
+    mbmi->interp_filter[3] = mbmi->interp_filter[1];
+  }
+#else  // CONFIG_DUAL_FILTER
+#if CONFIG_EXT_INTERP
+  if (!av1_is_interp_needed(xd)) {
+    mbmi->interp_filter = EIGHTTAP_REGULAR;
+    return;
+  }
+#endif  // CONFIG_EXT_INTERP
+  if (cm->interp_filter != SWITCHABLE) {
+    mbmi->interp_filter = cm->interp_filter;
+  } else {
+    const int ctx = av1_get_pred_context_switchable_interp(xd);
+#if CONFIG_DAALA_EC
+    mbmi->interp_filter =
         (InterpFilter)av1_switchable_interp_inv[aom_read_symbol(
             r, cm->fc->switchable_interp_cdf[ctx], SWITCHABLE_FILTERS,
             ACCT_STR)];
 #else
-    const InterpFilter type = (InterpFilter)aom_read_tree(
+    mbmi->interp_filter = (InterpFilter)aom_read_tree(
         r, av1_switchable_interp_tree, cm->fc->switchable_interp_prob[ctx],
         ACCT_STR);
 #endif
-    if (counts) ++counts->switchable_interp[ctx][type];
-    return type;
+    if (counts) ++counts->switchable_interp[ctx][mbmi->interp_filter];
   }
+#endif  // CONFIG_DUAL_FILTER
 }
 
 static void read_intra_block_mode_info(AV1_COMMON *const cm,
@@ -1190,11 +1230,13 @@ static INLINE int assign_mv(AV1_COMMON *cm, MACROBLOCKD *xd,
     }
     case ZEROMV: {
 #if CONFIG_GLOBAL_MOTION
-      mv[0].as_int =
-          gm_get_motion_vector(&cm->global_motion[ref_frame[0]]).as_int;
+      mv[0].as_int = gm_get_motion_vector(&cm->global_motion[ref_frame[0]],
+                                          cm->allow_high_precision_mv)
+                         .as_int;
       if (is_compound)
-        mv[1].as_int =
-            gm_get_motion_vector(&cm->global_motion[ref_frame[1]]).as_int;
+        mv[1].as_int = gm_get_motion_vector(&cm->global_motion[ref_frame[1]],
+                                            cm->allow_high_precision_mv)
+                           .as_int;
 #else
       mv[0].as_int = 0;
       if (is_compound) mv[1].as_int = 0;
@@ -1394,7 +1436,9 @@ static void read_inter_block_mode_info(AV1Decoder *const pbi,
   int16_t compound_inter_mode_ctx[MODE_CTX_REF_FRAMES];
 #endif  // CONFIG_REF_MV && CONFIG_EXT_INTER
   int16_t mode_ctx = 0;
-  MV_REFERENCE_FRAME ref_frame;
+#if CONFIG_WARPED_MOTION
+  double pts[144], pts_inref[144];
+#endif  // CONFIG_WARPED_MOTION
 
 #if CONFIG_PALETTE
   mbmi->palette_mode_info.palette_size[0] = 0;
@@ -1413,22 +1457,20 @@ static void read_inter_block_mode_info(AV1Decoder *const pbi,
       aom_internal_error(xd->error_info, AOM_CODEC_UNSUP_BITSTREAM,
                          "Reference frame has invalid dimensions");
     av1_setup_pre_planes(xd, ref, ref_buf->buf, mi_row, mi_col, &ref_buf->sf);
-  }
-
-  for (ref_frame = LAST_FRAME; ref_frame < MODE_CTX_REF_FRAMES; ++ref_frame) {
-    av1_find_mv_refs(cm, xd, mi, ref_frame,
+    av1_find_mv_refs(cm, xd, mi, frame,
 #if CONFIG_REF_MV
-                     &xd->ref_mv_count[ref_frame], xd->ref_mv_stack[ref_frame],
+                     &xd->ref_mv_count[frame], xd->ref_mv_stack[frame],
 #if CONFIG_EXT_INTER
                      compound_inter_mode_ctx,
 #endif  // CONFIG_EXT_INTER
 #endif
-                     ref_mvs[ref_frame], mi_row, mi_col, fpm_sync, (void *)pbi,
+                     ref_mvs[frame], mi_row, mi_col, fpm_sync, (void *)pbi,
                      inter_mode_ctx);
   }
 
 #if CONFIG_REF_MV
-  for (; ref_frame < MODE_CTX_REF_FRAMES; ++ref_frame) {
+  if (is_compound) {
+    MV_REFERENCE_FRAME ref_frame = av1_ref_frame_type(mbmi->ref_frame);
     av1_find_mv_refs(cm, xd, mi, ref_frame, &xd->ref_mv_count[ref_frame],
                      xd->ref_mv_stack[ref_frame],
 #if CONFIG_EXT_INTER
@@ -1439,14 +1481,29 @@ static void read_inter_block_mode_info(AV1Decoder *const pbi,
 
     if (xd->ref_mv_count[ref_frame] < 2) {
       MV_REFERENCE_FRAME rf[2];
+      int_mv zeromv[2];
       av1_set_ref_frame(rf, ref_frame);
+#if CONFIG_GLOBAL_MOTION
+      zeromv[0].as_int = gm_get_motion_vector(&cm->global_motion[rf[0]],
+                                              cm->allow_high_precision_mv)
+                             .as_int;
+      zeromv[1].as_int = (rf[1] != NONE)
+                             ? gm_get_motion_vector(&cm->global_motion[rf[1]],
+                                                    cm->allow_high_precision_mv)
+                                   .as_int
+                             : 0;
+#else
+      zeromv[0].as_int = zeromv[1].as_int = 0;
+#endif
       for (ref = 0; ref < 2; ++ref) {
         lower_mv_precision(&ref_mvs[rf[ref]][0].as_mv, allow_hp);
         lower_mv_precision(&ref_mvs[rf[ref]][1].as_mv, allow_hp);
       }
 
-      if (ref_mvs[rf[0]][0].as_int != 0 || ref_mvs[rf[0]][1].as_int != 0 ||
-          ref_mvs[rf[1]][0].as_int != 0 || ref_mvs[rf[1]][1].as_int != 0)
+      if (ref_mvs[rf[0]][0].as_int != zeromv[0].as_int ||
+          ref_mvs[rf[0]][1].as_int != zeromv[0].as_int ||
+          ref_mvs[rf[1]][0].as_int != zeromv[1].as_int ||
+          ref_mvs[rf[1]][1].as_int != zeromv[1].as_int)
         inter_mode_ctx[ref_frame] &= ~(1 << ALL_ZERO_FLAG_OFFSET);
     }
   }
@@ -1565,9 +1622,9 @@ static void read_inter_block_mode_info(AV1Decoder *const pbi,
   }
 #endif
 
-#if !CONFIG_EXT_INTERP && !CONFIG_DUAL_FILTER
-  mbmi->interp_filter = read_interp_filter(cm, xd, r);
-#endif  // !CONFIG_EXT_INTERP && !CONFIG_DUAL_FILTER
+#if !CONFIG_EXT_INTERP && !CONFIG_DUAL_FILTER && !CONFIG_WARPED_MOTION
+  read_mb_interp_filter(cm, xd, mbmi, r);
+#endif  // !CONFIG_EXT_INTERP && !CONFIG_DUAL_FILTER && !CONFIG_WARPED_MOTION
 
   if (bsize < BLOCK_8X8) {
     const int num_4x4_w = 1 << xd->bmode_blocks_wl;
@@ -1751,57 +1808,70 @@ static void read_inter_block_mode_info(AV1Decoder *const pbi,
 
 #if CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
   mbmi->motion_mode = SIMPLE_TRANSLATION;
+#if CONFIG_WARPED_MOTION
+  if (mbmi->sb_type >= BLOCK_8X8 && !has_second_ref(mbmi))
+    mbmi->num_proj_ref[0] = findSamples(cm, xd, mi_row, mi_col, pts, pts_inref);
+#endif  // CONFIG_WARPED_MOTION
+
 #if CONFIG_SUPERTX
-  if (!supertx_enabled)
+  if (!supertx_enabled) {
 #endif  // CONFIG_SUPERTX
 #if CONFIG_EXT_INTER
     if (mbmi->ref_frame[1] != INTRA_FRAME)
 #endif  // CONFIG_EXT_INTER
       mbmi->motion_mode = read_motion_mode(cm, xd, mbmi, r);
+#if CONFIG_WARPED_MOTION
+    if (mbmi->motion_mode == WARPED_CAUSAL) {
+      mbmi->wm_params[0].wmtype = DEFAULT_WMTYPE;
+      find_projection(mbmi->num_proj_ref[0], pts, pts_inref,
+                      &mbmi->wm_params[0]);
+    }
+#endif  // CONFIG_WARPED_MOTION
+#if CONFIG_SUPERTX
+  }
+#endif  // CONFIG_SUPERTX
 #endif  // CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
 
 #if CONFIG_EXT_INTER
-  mbmi->use_wedge_interinter = 0;
+  mbmi->interinter_compound_data.type = COMPOUND_AVERAGE;
   if (cm->reference_mode != SINGLE_REFERENCE &&
-      is_inter_compound_mode(mbmi->mode) &&
+      is_inter_compound_mode(mbmi->mode)
 #if CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
-      !(is_motion_variation_allowed(mbmi) &&
-        mbmi->motion_mode != SIMPLE_TRANSLATION) &&
+      && mbmi->motion_mode == SIMPLE_TRANSLATION
 #endif  // CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
-      is_interinter_wedge_used(bsize)) {
-    mbmi->use_wedge_interinter =
-        aom_read(r, cm->fc->wedge_interinter_prob[bsize], ACCT_STR);
+      ) {
+    mbmi->interinter_compound_data.type = aom_read_tree(
+        r, av1_compound_type_tree, cm->fc->compound_type_prob[bsize], ACCT_STR);
     if (xd->counts)
-      xd->counts->wedge_interinter[bsize][mbmi->use_wedge_interinter]++;
-    if (mbmi->use_wedge_interinter) {
-      mbmi->interinter_wedge_index =
+      xd->counts->compound_interinter[bsize]
+                                     [mbmi->interinter_compound_data.type]++;
+    if (mbmi->interinter_compound_data.type == COMPOUND_WEDGE) {
+      mbmi->interinter_compound_data.wedge_index =
           aom_read_literal(r, get_wedge_bits_lookup(bsize), ACCT_STR);
-      mbmi->interinter_wedge_sign = aom_read_bit(r, ACCT_STR);
+      mbmi->interinter_compound_data.wedge_sign = aom_read_bit(r, ACCT_STR);
     }
   }
 #endif  // CONFIG_EXT_INTER
 
+#if CONFIG_WARPED_MOTION
+  if (mbmi->motion_mode != WARPED_CAUSAL) {
+#endif  // CONFIG_WARPED_MOTION
+#if CONFIG_DUAL_FILTER || CONFIG_EXT_INTERP || CONFIG_WARPED_MOTION
+    read_mb_interp_filter(cm, xd, mbmi, r);
+#endif  // CONFIG_DUAL_FILTER || CONFIG_EXT_INTERP || CONFIG_WARPED_MOTION
+#if CONFIG_WARPED_MOTION
+  } else {
 #if CONFIG_DUAL_FILTER
-  for (ref = 0; ref < 2; ++ref) {
-    mbmi->interp_filter[ref] = (cm->interp_filter == SWITCHABLE)
-                                   ? EIGHTTAP_REGULAR
-                                   : cm->interp_filter;
-
-    if (has_subpel_mv_component(xd->mi[0], xd, ref) ||
-        (mbmi->ref_frame[1] > INTRA_FRAME &&
-         has_subpel_mv_component(xd->mi[0], xd, ref + 2)))
-      mbmi->interp_filter[ref] = read_interp_filter(cm, xd, ref, r);
-  }
-  // The index system worsk as:
-  // (0, 1) -> (vertical, horizontal) filter types for the first ref frame.
-  // (2, 3) -> (vertical, horizontal) filter types for the second ref frame.
-  mbmi->interp_filter[2] = mbmi->interp_filter[0];
-  mbmi->interp_filter[3] = mbmi->interp_filter[1];
+    mbmi->interp_filter[0] =
+        cm->interp_filter == SWITCHABLE ? EIGHTTAP_REGULAR : cm->interp_filter;
+    mbmi->interp_filter[1] =
+        cm->interp_filter == SWITCHABLE ? EIGHTTAP_REGULAR : cm->interp_filter;
 #else
-#if CONFIG_EXT_INTERP
-  mbmi->interp_filter = read_interp_filter(cm, xd, r);
-#endif  // CONFIG_EXT_INTERP
+    mbmi->interp_filter =
+        cm->interp_filter == SWITCHABLE ? EIGHTTAP_REGULAR : cm->interp_filter;
 #endif  // CONFIG_DUAL_FILTER
+  }
+#endif  // CONFIG_WARPED_MOTION
 }
 
 static void read_inter_frame_mode_info(AV1Decoder *const pbi,
@@ -1841,37 +1911,18 @@ static void read_inter_frame_mode_info(AV1Decoder *const pbi,
         xd->left_txfm_context_buffer + (mi_row & MAX_MIB_MASK);
     if (bsize >= BLOCK_8X8 && cm->tx_mode == TX_MODE_SELECT && !mbmi->skip &&
         inter_block) {
-      const TX_SIZE max_tx_size = max_txsize_lookup[bsize];
+      const TX_SIZE max_tx_size = max_txsize_rect_lookup[bsize];
       const int bh = tx_size_high_unit[max_tx_size];
       const int bw = tx_size_wide_unit[max_tx_size];
       const int width = block_size_wide[bsize] >> tx_size_wide_log2[0];
       const int height = block_size_high[bsize] >> tx_size_wide_log2[0];
       int idx, idy;
-#if CONFIG_EXT_TX && CONFIG_RECT_TX
-      int is_rect_tx_allowed = inter_block && is_rect_tx_allowed_bsize(bsize) &&
-                               !xd->lossless[mbmi->segment_id];
-      int use_rect_tx = 0;
-      int tx_size_cat = inter_tx_size_cat_lookup[bsize];
-      if (is_rect_tx_allowed) {
-        use_rect_tx = aom_read(r, cm->fc->rect_tx_prob[tx_size_cat], ACCT_STR);
-        if (xd->counts) {
-          ++xd->counts->rect_tx[tx_size_cat][use_rect_tx];
-        }
-      }
 
-      if (use_rect_tx) {
-        mbmi->tx_size = max_txsize_rect_lookup[bsize];
-        set_txfm_ctxs(mbmi->tx_size, xd->n8_w, xd->n8_h, xd);
-      } else {
-#endif  // CONFIG_EXT_TX && CONFIG_RECT_TX
-        mbmi->min_tx_size = TX_SIZES_ALL;
-        for (idy = 0; idy < height; idy += bh)
-          for (idx = 0; idx < width; idx += bw)
-            read_tx_size_vartx(cm, xd, mbmi, xd->counts, max_tx_size,
-                               height != width, idy, idx, r);
-#if CONFIG_EXT_TX && CONFIG_RECT_TX
-      }
-#endif
+      mbmi->min_tx_size = TX_SIZES_ALL;
+      for (idy = 0; idy < height; idy += bh)
+        for (idx = 0; idx < width; idx += bw)
+          read_tx_size_vartx(cm, xd, mbmi, xd->counts, max_tx_size,
+                             height != width, idy, idx, r);
     } else {
       if (inter_block)
         mbmi->tx_size = read_tx_size_inter(cm, xd, !mbmi->skip, r);

@@ -607,7 +607,8 @@ unsigned char *od_ec_enc_done(od_ec_enc *enc, uint32_t *nbytes) {
   out = out + storage - (offs + end_offs);
   c = 0;
   end_offs = offs;
-  while (offs-- > 0) {
+  while (offs > 0) {
+    offs--;
     c = buf[offs] + c;
     out[offs] = (unsigned char)c;
     c >>= 8;

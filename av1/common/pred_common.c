@@ -1,17 +1,20 @@
-
 /*
- *  Copyright (c) 2012 The WebM project authors. All Rights Reserved.
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved
  *
- *  Use of this source code is governed by a BSD-style license
- *  that can be found in the LICENSE file in the root of the source
- *  tree. An additional intellectual property rights grant can be found
- *  in the file PATENTS.  All contributing project authors may
- *  be found in the AUTHORS file in the root of the source tree.
+ * This source code is subject to the terms of the BSD 2 Clause License and
+ * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
+ * was not distributed with this source code in the LICENSE file, you can
+ * obtain it at www.aomedia.org/license/software. If the Alliance for Open
+ * Media Patent License 1.0 was not distributed with this source code in the
+ * PATENTS file, you can obtain it at www.aomedia.org/license/patent.
  */
 
 #include "av1/common/common.h"
 #include "av1/common/pred_common.h"
 #include "av1/common/reconinter.h"
+#if CONFIG_EXT_INTRA
+#include "av1/common/reconintra.h"
+#endif  // CONFIG_EXT_INTRA
 #include "av1/common/seg_common.h"
 
 // Returns a context number for the given MB prediction signal
@@ -112,7 +115,7 @@ static INTRA_FILTER get_ref_intra_filter(const MB_MODE_INFO *ref_mbmi) {
         default: break;
       }
     } else {
-      if (mode != DC_PRED && mode != TM_PRED) {
+      if (av1_is_directional_mode(mode, ref_mbmi->sb_type)) {
         int p_angle =
             mode_to_angle_map[mode] + ref_mbmi->angle_delta[0] * ANGLE_STEP;
         if (av1_is_intra_filter_switchable(p_angle)) {

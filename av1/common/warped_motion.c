@@ -1,11 +1,12 @@
 /*
- *  Copyright (c) 2015 The WebM project authors. All Rights Reserved.
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved
  *
- *  Use of this source code is governed by a BSD-style license
- *  that can be found in the LICENSE file in the root of the source
- *  tree. An additional intellectual property rights grant can be
- *  found  in the file PATENTS.  All contributing project authors may
- *  be found in the AUTHORS file in the root of the source tree.
+ * This source code is subject to the terms of the BSD 2 Clause License and
+ * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
+ * was not distributed with this source code in the LICENSE file, you can
+ * obtain it at www.aomedia.org/license/software. If the Alliance for Open
+ * Media Patent License 1.0 was not distributed with this source code in the
+ * PATENTS file, you can obtain it at www.aomedia.org/license/patent.
  */
 
 #include <stdio.h>
@@ -15,6 +16,76 @@
 #include <assert.h>
 
 #include "av1/common/warped_motion.h"
+
+/* clang-format off */
+static const int error_measure_lut[512] = {
+  // power 0.6
+  255, 254, 254, 253, 253, 252, 251, 251,
+  250, 250, 249, 248, 248, 247, 247, 246,
+  245, 245, 244, 243, 243, 242, 242, 241,
+  240, 240, 239, 238, 238, 237, 237, 236,
+  235, 235, 234, 233, 233, 232, 231, 231,
+  230, 230, 229, 228, 228, 227, 226, 226,
+  225, 224, 224, 223, 222, 222, 221, 220,
+  220, 219, 218, 218, 217, 216, 216, 215,
+  214, 214, 213, 212, 212, 211, 210, 210,
+  209, 208, 208, 207, 206, 206, 205, 204,
+  203, 203, 202, 201, 201, 200, 199, 199,
+  198, 197, 196, 196, 195, 194, 194, 193,
+  192, 191, 191, 190, 189, 188, 188, 187,
+  186, 185, 185, 184, 183, 182, 182, 181,
+  180, 179, 179, 178, 177, 176, 176, 175,
+  174, 173, 173, 172, 171, 170, 169, 169,
+  168, 167, 166, 165, 165, 164, 163, 162,
+  161, 161, 160, 159, 158, 157, 156, 156,
+  155, 154, 153, 152, 151, 151, 150, 149,
+  148, 147, 146, 145, 145, 144, 143, 142,
+  141, 140, 139, 138, 137, 137, 136, 135,
+  134, 133, 132, 131, 130, 129, 128, 127,
+  126, 125, 124, 123, 122, 121, 120, 119,
+  118, 117, 116, 115, 114, 113, 112, 111,
+  110, 109, 108, 107, 106, 105, 104, 103,
+  102, 100,  99,  98,  97,  96,  95,  94,
+  92, 91, 90, 89, 88, 86, 85, 84,
+  83, 81, 80, 79, 77, 76, 75, 73,
+  72, 71, 69, 68, 66, 65, 63, 62,
+  60, 59, 57, 55, 54, 52, 50, 48,
+  47, 45, 43, 41, 39, 37, 34, 32,
+  29, 27, 24, 21, 18, 14,  9,  0,
+  9, 14, 18, 21, 24, 27, 29, 32,
+  34, 37, 39, 41, 43, 45, 47, 48,
+  50, 52, 54, 55, 57, 59, 60, 62,
+  63, 65, 66, 68, 69, 71, 72, 73,
+  75, 76, 77, 79, 80, 81, 83, 84,
+  85, 86, 88, 89, 90, 91, 92, 94,
+  95,  96,  97,  98,  99, 100, 102, 103,
+  104, 105, 106, 107, 108, 109, 110, 111,
+  112, 113, 114, 115, 116, 117, 118, 119,
+  120, 121, 122, 123, 124, 125, 126, 127,
+  128, 129, 130, 131, 132, 133, 134, 135,
+  136, 137, 137, 138, 139, 140, 141, 142,
+  143, 144, 145, 145, 146, 147, 148, 149,
+  150, 151, 151, 152, 153, 154, 155, 156,
+  156, 157, 158, 159, 160, 161, 161, 162,
+  163, 164, 165, 165, 166, 167, 168, 169,
+  169, 170, 171, 172, 173, 173, 174, 175,
+  176, 176, 177, 178, 179, 179, 180, 181,
+  182, 182, 183, 184, 185, 185, 186, 187,
+  188, 188, 189, 190, 191, 191, 192, 193,
+  194, 194, 195, 196, 196, 197, 198, 199,
+  199, 200, 201, 201, 202, 203, 203, 204,
+  205, 206, 206, 207, 208, 208, 209, 210,
+  210, 211, 212, 212, 213, 214, 214, 215,
+  216, 216, 217, 218, 218, 219, 220, 220,
+  221, 222, 222, 223, 224, 224, 225, 226,
+  226, 227, 228, 228, 229, 230, 230, 231,
+  231, 232, 233, 233, 234, 235, 235, 236,
+  237, 237, 238, 238, 239, 240, 240, 241,
+  242, 242, 243, 243, 244, 245, 245, 246,
+  247, 247, 248, 248, 249, 250, 250, 251,
+  251, 252, 253, 253, 254, 254, 255, 255,
+};
+/* clang-format on */
 
 static ProjectPointsFunc get_project_points_type(TransformationType type) {
   switch (type) {
@@ -35,18 +106,18 @@ void project_points_translation(int32_t *mat, int *points, int *proj,
     const int x = *(points++), y = *(points++);
     if (subsampling_x)
       *(proj++) = ROUND_POWER_OF_TWO_SIGNED(
-          ((x * (1 << (WARPEDMODEL_PREC_BITS + 1))) + mat[1]),
+          ((x * (1 << (WARPEDMODEL_PREC_BITS + 1))) + mat[0]),
           WARPEDDIFF_PREC_BITS + 1);
     else
       *(proj++) = ROUND_POWER_OF_TWO_SIGNED(
-          ((x * (1 << WARPEDMODEL_PREC_BITS)) + mat[1]), WARPEDDIFF_PREC_BITS);
+          ((x * (1 << WARPEDMODEL_PREC_BITS)) + mat[0]), WARPEDDIFF_PREC_BITS);
     if (subsampling_y)
       *(proj++) = ROUND_POWER_OF_TWO_SIGNED(
-          ((y * (1 << (WARPEDMODEL_PREC_BITS + 1))) + mat[0]),
+          ((y * (1 << (WARPEDMODEL_PREC_BITS + 1))) + mat[1]),
           WARPEDDIFF_PREC_BITS + 1);
     else
       *(proj++) = ROUND_POWER_OF_TWO_SIGNED(
-          ((y * (1 << WARPEDMODEL_PREC_BITS))) + mat[0], WARPEDDIFF_PREC_BITS);
+          ((y * (1 << WARPEDMODEL_PREC_BITS))) + mat[1], WARPEDDIFF_PREC_BITS);
     points += stride_points - 2;
     proj += stride_proj - 2;
   }
@@ -60,19 +131,19 @@ void project_points_rotzoom(int32_t *mat, int *points, int *proj, const int n,
     const int x = *(points++), y = *(points++);
     if (subsampling_x)
       *(proj++) = ROUND_POWER_OF_TWO_SIGNED(
-          mat[3] * 2 * x + mat[2] * 2 * y + mat[1] +
-              (mat[3] + mat[2] - (1 << WARPEDMODEL_PREC_BITS)) / 2,
+          mat[2] * 2 * x + mat[3] * 2 * y + mat[0] +
+              (mat[2] + mat[3] - (1 << WARPEDMODEL_PREC_BITS)) / 2,
           WARPEDDIFF_PREC_BITS + 1);
     else
-      *(proj++) = ROUND_POWER_OF_TWO_SIGNED(mat[3] * x + mat[2] * y + mat[1],
+      *(proj++) = ROUND_POWER_OF_TWO_SIGNED(mat[2] * x + mat[3] * y + mat[0],
                                             WARPEDDIFF_PREC_BITS);
     if (subsampling_y)
       *(proj++) = ROUND_POWER_OF_TWO_SIGNED(
-          -mat[2] * 2 * x + mat[3] * 2 * y + mat[0] +
-              (-mat[2] + mat[3] - (1 << WARPEDMODEL_PREC_BITS)) / 2,
+          -mat[3] * 2 * x + mat[2] * 2 * y + mat[1] +
+              (-mat[3] + mat[2] - (1 << WARPEDMODEL_PREC_BITS)) / 2,
           WARPEDDIFF_PREC_BITS + 1);
     else
-      *(proj++) = ROUND_POWER_OF_TWO_SIGNED(-mat[2] * x + mat[3] * y + mat[0],
+      *(proj++) = ROUND_POWER_OF_TWO_SIGNED(-mat[3] * x + mat[2] * y + mat[1],
                                             WARPEDDIFF_PREC_BITS);
     points += stride_points - 2;
     proj += stride_proj - 2;
@@ -87,19 +158,19 @@ void project_points_affine(int32_t *mat, int *points, int *proj, const int n,
     const int x = *(points++), y = *(points++);
     if (subsampling_x)
       *(proj++) = ROUND_POWER_OF_TWO_SIGNED(
-          mat[3] * 2 * x + mat[2] * 2 * y + mat[1] +
-              (mat[3] + mat[2] - (1 << WARPEDMODEL_PREC_BITS)) / 2,
+          mat[2] * 2 * x + mat[3] * 2 * y + mat[0] +
+              (mat[2] + mat[3] - (1 << WARPEDMODEL_PREC_BITS)) / 2,
           WARPEDDIFF_PREC_BITS + 1);
     else
-      *(proj++) = ROUND_POWER_OF_TWO_SIGNED(mat[3] * x + mat[2] * y + mat[1],
+      *(proj++) = ROUND_POWER_OF_TWO_SIGNED(mat[2] * x + mat[3] * y + mat[0],
                                             WARPEDDIFF_PREC_BITS);
     if (subsampling_y)
       *(proj++) = ROUND_POWER_OF_TWO_SIGNED(
-          mat[4] * 2 * x + mat[5] * 2 * y + mat[0] +
+          mat[4] * 2 * x + mat[5] * 2 * y + mat[1] +
               (mat[4] + mat[5] - (1 << WARPEDMODEL_PREC_BITS)) / 2,
           WARPEDDIFF_PREC_BITS + 1);
     else
-      *(proj++) = ROUND_POWER_OF_TWO_SIGNED(mat[4] * x + mat[5] * y + mat[0],
+      *(proj++) = ROUND_POWER_OF_TWO_SIGNED(mat[4] * x + mat[5] * y + mat[1],
                                             WARPEDDIFF_PREC_BITS);
     points += stride_points - 2;
     proj += stride_proj - 2;
@@ -118,11 +189,11 @@ void project_points_homography(int32_t *mat, int *points, int *proj,
     x = (subsampling_x ? 4 * x + 1 : 2 * x);
     y = (subsampling_y ? 4 * y + 1 : 2 * y);
 
-    Z = (mat[7] * x + mat[6] * y + (1 << (WARPEDMODEL_ROW3HOMO_PREC_BITS + 1)));
-    xp = (mat[1] * x + mat[0] * y + 2 * mat[3]) *
+    Z = (mat[6] * x + mat[7] * y + (1 << (WARPEDMODEL_ROW3HOMO_PREC_BITS + 1)));
+    xp = (mat[2] * x + mat[3] * y + 2 * mat[0]) *
          (1 << (WARPEDPIXEL_PREC_BITS + WARPEDMODEL_ROW3HOMO_PREC_BITS -
                 WARPEDMODEL_PREC_BITS));
-    yp = (mat[2] * x + mat[5] * y + 2 * mat[4]) *
+    yp = (mat[4] * x + mat[5] * y + 2 * mat[1]) *
          (1 << (WARPEDPIXEL_PREC_BITS + WARPEDMODEL_ROW3HOMO_PREC_BITS -
                 WARPEDMODEL_PREC_BITS));
 
@@ -136,6 +207,29 @@ void project_points_homography(int32_t *mat, int *points, int *proj,
 
     points += stride_points - 2;
     proj += stride_proj - 2;
+  }
+}
+
+// 'points' are at original scale, output 'proj's are scaled up by
+// 1 << WARPEDPIXEL_PREC_BITS
+void project_points(WarpedMotionParams *wm_params, int *points, int *proj,
+                    const int n, const int stride_points, const int stride_proj,
+                    const int subsampling_x, const int subsampling_y) {
+  switch (wm_params->wmtype) {
+    case AFFINE:
+      project_points_affine(wm_params->wmmat, points, proj, n, stride_points,
+                            stride_proj, subsampling_x, subsampling_y);
+      break;
+    case ROTZOOM:
+      project_points_rotzoom(wm_params->wmmat, points, proj, n, stride_points,
+                             stride_proj, subsampling_x, subsampling_y);
+      break;
+    case HOMOGRAPHY:
+      project_points_homography(wm_params->wmmat, points, proj, n,
+                                stride_points, stride_proj, subsampling_x,
+                                subsampling_y);
+      break;
+    default: assert(0 && "Invalid warped motion type!"); return;
   }
 }
 
@@ -271,11 +365,11 @@ static uint8_t warp_interpolate(uint8_t *ref, int x, int y, int width,
 
   if (ix < 0 && iy < 0)
     return ref[0];
-  else if (ix < 0 && iy > height - 1)
+  else if (ix < 0 && iy >= height - 1)
     return ref[(height - 1) * stride];
-  else if (ix > width - 1 && iy < 0)
+  else if (ix >= width - 1 && iy < 0)
     return ref[width - 1];
-  else if (ix > width - 1 && iy > height - 1)
+  else if (ix >= width - 1 && iy >= height - 1)
     return ref[(height - 1) * stride + (width - 1)];
   else if (ix < 0) {
     v = ROUND_POWER_OF_TWO_SIGNED(
@@ -288,13 +382,13 @@ static uint8_t warp_interpolate(uint8_t *ref, int x, int y, int width,
         ref[ix] * (WARPEDPIXEL_PREC_SHIFTS - sx) + ref[ix + 1] * sx,
         WARPEDPIXEL_PREC_BITS);
     return clip_pixel(v);
-  } else if (ix > width - 1) {
+  } else if (ix >= width - 1) {
     v = ROUND_POWER_OF_TWO_SIGNED(
         ref[iy * stride + width - 1] * (WARPEDPIXEL_PREC_SHIFTS - sy) +
             ref[(iy + 1) * stride + width - 1] * sy,
         WARPEDPIXEL_PREC_BITS);
     return clip_pixel(v);
-  } else if (iy > height - 1) {
+  } else if (iy >= height - 1) {
     v = ROUND_POWER_OF_TWO_SIGNED(
         ref[(height - 1) * stride + ix] * (WARPEDPIXEL_PREC_SHIFTS - sx) +
             ref[(height - 1) * stride + ix + 1] * sx,
@@ -426,6 +520,18 @@ static uint16_t highbd_warp_interpolate(uint16_t *ref, int x, int y, int width,
   }
 }
 
+static INLINE int highbd_error_measure(int err, int bd) {
+  const int b = bd - 8;
+  const int bmask = (1 << b) - 1;
+  const int v = (1 << b);
+  int e1, e2;
+  err = abs(err);
+  e1 = err >> b;
+  e2 = err & bmask;
+  return error_measure_lut[255 + e1] * (v - e2) +
+         error_measure_lut[256 + e1] * e2;
+}
+
 static double highbd_warp_erroradv(WarpedMotionParams *wm, uint8_t *ref8,
                                    int width, int height, int stride,
                                    uint8_t *dst8, int p_col, int p_row,
@@ -449,10 +555,10 @@ static double highbd_warp_erroradv(WarpedMotionParams *wm, uint8_t *ref8,
       gm_err = dst[(j - p_col) + (i - p_row) * p_stride] -
                highbd_warp_interpolate(ref, out[0], out[1], width, height,
                                        stride, bd);
-      no_gm_err = dst[(j - p_col) + (i - p_row) * p_stride] -
-                  ref[(j - p_col) + (i - p_row) * stride];
-      gm_sumerr += (int64_t)gm_err * gm_err;
-      no_gm_sumerr += (int64_t)no_gm_err * no_gm_err;
+      no_gm_err =
+          dst[(j - p_col) + (i - p_row) * p_stride] - ref[j + i * stride];
+      gm_sumerr += highbd_error_measure(gm_err, bd);
+      no_gm_sumerr += highbd_error_measure(no_gm_err, bd);
     }
   }
   return (double)gm_sumerr / no_gm_sumerr;
@@ -491,6 +597,10 @@ static void highbd_warp_plane(WarpedMotionParams *wm, uint8_t *ref8, int width,
 }
 #endif  // CONFIG_AOM_HIGHBITDEPTH
 
+static INLINE int error_measure(int err) {
+  return error_measure_lut[255 + err];
+}
+
 static double warp_erroradv(WarpedMotionParams *wm, uint8_t *ref, int width,
                             int height, int stride, uint8_t *dst, int p_col,
                             int p_row, int p_width, int p_height, int p_stride,
@@ -510,10 +620,10 @@ static double warp_erroradv(WarpedMotionParams *wm, uint8_t *ref, int width,
       out[1] = ROUND_POWER_OF_TWO_SIGNED(out[1] * y_scale, 4);
       gm_err = dst[(j - p_col) + (i - p_row) * p_stride] -
                warp_interpolate(ref, out[0], out[1], width, height, stride);
-      no_gm_err = dst[(j - p_col) + (i - p_row) * p_stride] -
-                  ref[(j - p_col) + (i - p_row) * stride];
-      gm_sumerr += gm_err * gm_err;
-      no_gm_sumerr += no_gm_err * no_gm_err;
+      no_gm_err =
+          dst[(j - p_col) + (i - p_row) * p_stride] - ref[j + i * stride];
+      gm_sumerr += error_measure(gm_err);
+      no_gm_sumerr += error_measure(no_gm_err);
     }
   }
   return (double)gm_sumerr / no_gm_sumerr;
@@ -779,6 +889,7 @@ static int svdcmp(double **u, int m, int n, double w[], double **v) {
         break;
       }
       if (its == max_its - 1) {
+        aom_free(rv1);
         return 1;
       }
       assert(k > 0);
@@ -886,10 +997,16 @@ int pseudo_inverse(double *inv, double *matx, const int M, const int N) {
     return 1;
   }
   if (SVD(U, W, V, matx, M, N)) {
+    aom_free(U);
+    aom_free(W);
+    aom_free(V);
     return 1;
   }
   for (i = 0; i < N; i++) {
     if (fabs(W[i]) < TINY_NEAR_ZERO) {
+      aom_free(U);
+      aom_free(W);
+      aom_free(V);
       return 1;
     }
   }
@@ -910,7 +1027,6 @@ int pseudo_inverse(double *inv, double *matx, const int M, const int N) {
 }
 
 static void normalize_homography(double *pts, int n, double *T) {
-  // Assume the points are 2d coordinates with scale = 1
   double *p = pts;
   double mean[2] = { 0, 0 };
   double msqe = 0;
@@ -967,7 +1083,23 @@ static void denormalize_homography(double *params, double *T1, double *T2) {
   multiply_mat(iT2, params2, params, 3, 3, 3);
 }
 
-static void denormalize_affine(double *params, double *T1, double *T2) {
+static void denormalize_homography_reorder(double *params, double *T1,
+                                           double *T2) {
+  double params_denorm[MAX_PARAMDIM];
+  memcpy(params_denorm, params, sizeof(*params) * 8);
+  params_denorm[8] = 1.0;
+  denormalize_homography(params_denorm, T1, T2);
+  params[0] = params_denorm[2];
+  params[1] = params_denorm[5];
+  params[2] = params_denorm[0];
+  params[3] = params_denorm[1];
+  params[4] = params_denorm[3];
+  params[5] = params_denorm[4];
+  params[6] = params_denorm[6];
+  params[7] = params_denorm[7];
+}
+
+static void denormalize_affine_reorder(double *params, double *T1, double *T2) {
   double params_denorm[MAX_PARAMDIM];
   params_denorm[0] = params[0];
   params_denorm[1] = params[1];
@@ -978,15 +1110,17 @@ static void denormalize_affine(double *params, double *T1, double *T2) {
   params_denorm[6] = params_denorm[7] = 0;
   params_denorm[8] = 1;
   denormalize_homography(params_denorm, T1, T2);
-  params[0] = params_denorm[5];
-  params[1] = params_denorm[2];
-  params[2] = params_denorm[1];
-  params[3] = params_denorm[0];
+  params[0] = params_denorm[2];
+  params[1] = params_denorm[5];
+  params[2] = params_denorm[0];
+  params[3] = params_denorm[1];
   params[4] = params_denorm[3];
   params[5] = params_denorm[4];
+  params[6] = params[7] = 0;
 }
 
-static void denormalize_rotzoom(double *params, double *T1, double *T2) {
+static void denormalize_rotzoom_reorder(double *params, double *T1,
+                                        double *T2) {
   double params_denorm[MAX_PARAMDIM];
   params_denorm[0] = params[0];
   params_denorm[1] = params[1];
@@ -997,13 +1131,17 @@ static void denormalize_rotzoom(double *params, double *T1, double *T2) {
   params_denorm[6] = params_denorm[7] = 0;
   params_denorm[8] = 1;
   denormalize_homography(params_denorm, T1, T2);
-  params[0] = params_denorm[5];
-  params[1] = params_denorm[2];
-  params[2] = params_denorm[1];
-  params[3] = params_denorm[0];
+  params[0] = params_denorm[2];
+  params[1] = params_denorm[5];
+  params[2] = params_denorm[0];
+  params[3] = params_denorm[1];
+  params[4] = -params[3];
+  params[5] = params[2];
+  params[6] = params[7] = 0;
 }
 
-static void denormalize_translation(double *params, double *T1, double *T2) {
+static void denormalize_translation_reorder(double *params, double *T1,
+                                            double *T2) {
   double params_denorm[MAX_PARAMDIM];
   params_denorm[0] = 1;
   params_denorm[1] = 0;
@@ -1014,8 +1152,11 @@ static void denormalize_translation(double *params, double *T1, double *T2) {
   params_denorm[6] = params_denorm[7] = 0;
   params_denorm[8] = 1;
   denormalize_homography(params_denorm, T1, T2);
-  params[0] = params_denorm[5];
-  params[1] = params_denorm[2];
+  params[0] = params_denorm[2];
+  params[1] = params_denorm[5];
+  params[2] = params[5] = 1;
+  params[3] = params[4] = 0;
+  params[6] = params[7] = 0;
 }
 
 int find_translation(const int np, double *pts1, double *pts2, double *mat) {
@@ -1040,7 +1181,7 @@ int find_translation(const int np, double *pts1, double *pts2, double *mat) {
   }
   mat[0] = sumx / np;
   mat[1] = sumy / np;
-  denormalize_translation(mat, T1, T2);
+  denormalize_translation_reorder(mat, T1, T2);
   return 0;
 }
 
@@ -1079,7 +1220,7 @@ int find_rotzoom(const int np, double *pts1, double *pts2, double *mat) {
     return 1;
   }
   multiply_mat(temp, b, mat, 4, np2, 1);
-  denormalize_rotzoom(mat, T1, T2);
+  denormalize_rotzoom_reorder(mat, T1, T2);
   aom_free(a);
   return 0;
 }
@@ -1123,7 +1264,7 @@ int find_affine(const int np, double *pts1, double *pts2, double *mat) {
     return 1;
   }
   multiply_mat(temp, b, mat, 6, np2, 1);
-  denormalize_affine(mat, T1, T2);
+  denormalize_affine_reorder(mat, T1, T2);
   aom_free(a);
   return 0;
 }
@@ -1133,7 +1274,7 @@ int find_homography(const int np, double *pts1, double *pts2, double *mat) {
   const int np3 = np * 3;
   double *a = (double *)aom_malloc(sizeof(*a) * np3 * 18);
   double *U = a + np3 * 9;
-  double S[9], V[9 * 9];
+  double S[9], V[9 * 9], H[9];
   int i, mini;
   double sx, sy, dx, dy;
   double T1[9], T2[9];
@@ -1188,11 +1329,31 @@ int find_homography(const int np, double *pts1, double *pts2, double *mat) {
     }
   }
 
-  for (i = 0; i < 9; i++) mat[i] = V[i * 9 + mini];
-  denormalize_homography(mat, T1, T2);
+  for (i = 0; i < 9; i++) H[i] = V[i * 9 + mini];
+  denormalize_homography_reorder(H, T1, T2);
   aom_free(a);
-  if (mat[8] == 0.0) {
+  if (H[8] == 0.0) {
     return 1;
+  } else {
+    // normalize
+    double f = 1.0 / H[8];
+    for (i = 0; i < 8; i++) mat[i] = f * H[i];
   }
   return 0;
+}
+
+int find_projection(const int np, double *pts1, double *pts2,
+                    WarpedMotionParams *wm_params) {
+  double H[9];
+  int result = 1;
+
+  switch (wm_params->wmtype) {
+    case AFFINE: result = find_affine(np, pts1, pts2, H); break;
+    case ROTZOOM: result = find_rotzoom(np, pts1, pts2, H); break;
+    case HOMOGRAPHY: result = find_homography(np, pts1, pts2, H); break;
+    default: assert(0 && "Invalid warped motion type!"); return 1;
+  }
+  if (result == 0) av1_integerize_model(H, wm_params->wmtype, wm_params);
+
+  return result;
 }

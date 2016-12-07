@@ -1,11 +1,12 @@
 /*
- *  Copyright (c) 2016 The WebM project authors. All Rights Reserved.
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved
  *
- *  Use of this source code is governed by a BSD-style license
- *  that can be found in the LICENSE file in the root of the source
- *  tree. An additional intellectual property rights grant can be found
- *  in the file PATENTS.  All contributing project authors may
- *  be found in the AUTHORS file in the root of the source tree.
+ * This source code is subject to the terms of the BSD 2 Clause License and
+ * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
+ * was not distributed with this source code in the LICENSE file, you can
+ * obtain it at www.aomedia.org/license/software. If the Alliance for Open
+ * Media Patent License 1.0 was not distributed with this source code in the
+ * PATENTS file, you can obtain it at www.aomedia.org/license/patent.
  */
 
 #include "third_party/googletest/src/include/gtest/gtest.h"
@@ -34,6 +35,10 @@ void fht8x8_ref(const int16_t *in, tran_low_t *out, int stride, int tx_type) {
   av1_fht8x8_c(in, out, stride, tx_type);
 }
 
+void iht8x8_ref(const tran_low_t *in, uint8_t *out, int stride, int tx_type) {
+  av1_iht8x8_64_add_c(in, out, stride, tx_type);
+}
+
 #if CONFIG_AOM_HIGHBITDEPTH
 typedef void (*IHbdHtFunc)(const tran_low_t *in, uint8_t *out, int stride,
                            int tx_type, int bd);
@@ -60,6 +65,7 @@ class AV1Trans8x8HT : public libaom_test::TransformTestBase,
     pitch_ = 8;
     height_ = 8;
     fwd_txfm_ref = fht8x8_ref;
+    inv_txfm_ref = iht8x8_ref;
     bit_depth_ = GET_PARAM(3);
     mask_ = (1 << bit_depth_) - 1;
     num_coeffs_ = GET_PARAM(4);
@@ -79,7 +85,14 @@ class AV1Trans8x8HT : public libaom_test::TransformTestBase,
   IhtFunc inv_txfm_;
 };
 
+TEST_P(AV1Trans8x8HT, MemCheck) { RunMemCheck(); }
 TEST_P(AV1Trans8x8HT, CoeffCheck) { RunCoeffCheck(); }
+// Note:
+//  TODO(luoyi): Add tx_type, 9-15 for inverse transform.
+//  Need cleanup since same tests may be done in fdct8x8_test.cc
+// TEST_P(AV1Trans8x8HT, AccuracyCheck) { RunAccuracyCheck(0); }
+// TEST_P(AV1Trans8x8HT, InvAccuracyCheck) { RunInvAccuracyCheck(0); }
+// TEST_P(AV1Trans8x8HT, InvCoeffCheck) { RunInvCoeffCheck(); }
 
 #if CONFIG_AOM_HIGHBITDEPTH
 class AV1HighbdTrans8x8HT : public ::testing::TestWithParam<HighbdHt8x8Param> {
@@ -152,7 +165,7 @@ TEST_P(AV1HighbdTrans8x8HT, HighbdCoeffCheck) { RunBitexactCheck(); }
 
 using std::tr1::make_tuple;
 
-#if HAVE_SSE2
+#if HAVE_SSE2 && !CONFIG_EMULATE_HARDWARE
 const Ht8x8Param kArrayHt8x8Param_sse2[] = {
   make_tuple(&av1_fht8x8_sse2, &av1_iht8x8_64_add_sse2, 0, AOM_BITS_8, 64),
   make_tuple(&av1_fht8x8_sse2, &av1_iht8x8_64_add_sse2, 1, AOM_BITS_8, 64),
@@ -174,9 +187,9 @@ const Ht8x8Param kArrayHt8x8Param_sse2[] = {
 };
 INSTANTIATE_TEST_CASE_P(SSE2, AV1Trans8x8HT,
                         ::testing::ValuesIn(kArrayHt8x8Param_sse2));
-#endif  // HAVE_SSE2
+#endif  // HAVE_SSE2 && !CONFIG_EMULATE_HARDWARE
 
-#if HAVE_SSE4_1 && CONFIG_AOM_HIGHBITDEPTH
+#if HAVE_SSE4_1 && CONFIG_AOM_HIGHBITDEPTH && !CONFIG_EMULATE_HARDWARE
 const HighbdHt8x8Param kArrayHBDHt8x8Param_sse4_1[] = {
   make_tuple(&av1_fwd_txfm2d_8x8_sse4_1, 0, 10),
   make_tuple(&av1_fwd_txfm2d_8x8_sse4_1, 0, 12),
@@ -201,6 +214,6 @@ const HighbdHt8x8Param kArrayHBDHt8x8Param_sse4_1[] = {
 };
 INSTANTIATE_TEST_CASE_P(SSE4_1, AV1HighbdTrans8x8HT,
                         ::testing::ValuesIn(kArrayHBDHt8x8Param_sse4_1));
-#endif  // HAVE_SSE4_1 && CONFIG_AOM_HIGHBITDEPTH
+#endif  // HAVE_SSE4_1 && CONFIG_AOM_HIGHBITDEPTH && !CONFIG_EMULATE_HARDWARE
 
 }  // namespace

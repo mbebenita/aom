@@ -293,9 +293,9 @@ EXPERIMENT_LIST="
     parallel_deblocking
     tile_groups
     ec_adapt
-    simp_mv_pred
     rd_debug
     reference_buffer
+    coef_interleave
 "
 CONFIG_LIST="
     dependency_tracking
@@ -457,6 +457,15 @@ post_process_cmdline() {
     for c in ${CODECS}; do
         enabled ${c} && enable_feature ${c##*_}s
     done
+
+    # Enable ref_mv by default
+    soft_enable ref_mv
+
+    # Enable filter_7bit by default
+    soft_enable filter_7bit
+
+    # Enable reference_buffer by default
+    soft_enable reference_buffer
 
     # Enable daala_ec by default
     ! enabled ans && soft_enable daala_ec

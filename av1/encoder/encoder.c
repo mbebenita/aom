@@ -2821,6 +2821,7 @@ static void scale_and_extend_frame(const YV12_BUFFER_CONFIG *src,
   const int taps = interp_filter_params.taps;
   int x, y, i;
 
+  assert(planes <= 3);
   for (y = 0; y < dst_h; y += 16) {
     for (x = 0; x < dst_w; x += 16) {
       for (i = 0; i < planes; ++i) {
@@ -2877,6 +2878,27 @@ static int scale_down(AV1_COMP *cpi, int q) {
   }
   return scale;
 }
+
+#if CONFIG_GLOBAL_MOTION
+#define MIN_GLOBAL_MOTION_BLKS 4
+static int recode_loop_test_global_motion(AV1_COMP *cpi) {
+  int i;
+  int recode = 0;
+  AV1_COMMON *const cm = &cpi->common;
+  for (i = LAST_FRAME; i <= ALTREF_FRAME; ++i) {
+    if (cm->global_motion[i].wmtype != IDENTITY &&
+        cpi->global_motion_used[i] < MIN_GLOBAL_MOTION_BLKS) {
+      set_default_gmparams(&cm->global_motion[i]);
+#if CONFIG_REF_MV
+      recode = 1;
+#else
+      recode |= (cpi->global_motion_used[i] > 0);
+#endif
+    }
+  }
+  return recode;
+}
+#endif  // CONFIG_GLOBAL_MOTION
 
 // Function to test for conditions that indicate we should loop
 // back and recode a frame.
@@ -3699,6 +3721,13 @@ static void set_mv_search_params(AV1_COMP *cpi) {
 }
 
 static void set_size_independent_vars(AV1_COMP *cpi) {
+#if CONFIG_GLOBAL_MOTION
+  int i;
+  for (i = LAST_FRAME; i <= ALTREF_FRAME; ++i) {
+    set_default_gmparams(&cpi->common.global_motion[i]);
+  }
+  cpi->global_motion_search_done = 0;
+#endif  // CONFIG_GLOBAL_MOTION
   av1_set_speed_features_framesize_independent(cpi);
   av1_set_rd_speed_thresholds(cpi);
   av1_set_rd_speed_thresholds_sub8x8(cpi);
@@ -4211,6 +4240,12 @@ static void encode_with_recode_loop(AV1_COMP *cpi, size_t *size,
         rc->projected_frame_size < rc->max_frame_bandwidth)
       loop = 0;
 
+#if CONFIG_GLOBAL_MOTION
+    if (recode_loop_test_global_motion(cpi)) {
+      loop = 1;
+    }
+#endif  // CONFIG_GLOBAL_MOTION
+
     if (loop) {
       ++loop_count;
       ++loop_at_this_size;
@@ -4585,10 +4620,13 @@ static void encode_frame_to_data_rate(AV1_COMP *cpi, size_t *size,
     }
   }
 #if CONFIG_TILE_GROUPS
-  if (cm->error_resilient_mode)
-    cm->num_tg = MAX_NUM_TG;
-  else
-    cm->num_tg = 1;
+  if (cpi->oxcf.mtu == 0) {
+    cm->num_tg = cpi->oxcf.num_tile_groups;
+  } else {
+    // Use a default value for the purposes of weighting costs in probability
+    // updates
+    cm->num_tg = DEFAULT_MAX_NUM_TG;
+  }
 #endif
 
   // For 1 pass CBR, check if we are dropping this frame.
@@ -4615,9 +4653,14 @@ static void encode_frame_to_data_rate(AV1_COMP *cpi, size_t *size,
     * wraparound) */
     int FidLen = FRAME_ID_LENGTH_MINUS7 + 7;
     if (cm->current_frame_id == -1) {
-      /* quasi-random initialization of current_frame_id for a key frame */
-      int lsb = cpi->Source->y_buffer[0] & 0xff;
-      int msb = cpi->Source->y_buffer[1] & 0xff;
+/* quasi-random initialization of current_frame_id for a key frame */
+#if CONFIG_AOM_HIGHBITDEPTH
+      int lsb = CONVERT_TO_SHORTPTR(cpi->Source->y_buffer)[0] & 0xff;
+      int msb = CONVERT_TO_SHORTPTR(cpi->Source->y_buffer)[1] & 0xff;
+#else
+      int lsb = cpi->Source->y_buffer[0];
+      int msb = cpi->Source->y_buffer[1];
+#endif
       cm->current_frame_id = ((msb << 8) + lsb) % (1 << FidLen);
     } else {
       cm->current_frame_id =
@@ -4706,7 +4749,7 @@ static void encode_frame_to_data_rate(AV1_COMP *cpi, size_t *size,
 
   av1_update_reference_frames(cpi);
 
-  for (t = TX_4X4; t <= TX_32X32; t++)
+  for (t = TX_4X4; t < TX_SIZES; t++)
     av1_full_to_model_counts(cpi->td.counts->coef[t],
                              cpi->td.rd_counts.coef_counts[t]);
 

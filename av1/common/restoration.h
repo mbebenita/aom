@@ -1,11 +1,12 @@
 /*
- *  Copyright (c) 2016 The WebM project authors. All Rights Reserved.
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved
  *
- *  Use of this source code is governed by a BSD-style license
- *  that can be found in the LICENSE file in the root of the source
- *  tree. An additional intellectual property rights grant can be found
- *  in the file PATENTS.  All contributing project authors may
- *  be found in the AUTHORS file in the root of the source tree.
+ * This source code is subject to the terms of the BSD 2 Clause License and
+ * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
+ * was not distributed with this source code in the LICENSE file, you can
+ * obtain it at www.aomedia.org/license/software. If the Alliance for Open
+ * Media Patent License 1.0 was not distributed with this source code in the
+ * PATENTS file, you can obtain it at www.aomedia.org/license/patent.
  */
 
 #ifndef AV1_COMMON_RESTORATION_H_
@@ -20,14 +21,50 @@
 extern "C" {
 #endif
 
+#define CLIP(x, lo, hi) ((x) < (lo) ? (lo) : (x) > (hi) ? (hi) : (x))
+#define RINT(x) ((x) < 0 ? (int)((x)-0.5) : (int)((x) + 0.5))
+
+#define RESTORATION_TILESIZE_SML 128
+#define RESTORATION_TILESIZE_BIG 256
+#define RESTORATION_TILEPELS_MAX \
+  (RESTORATION_TILESIZE_BIG * RESTORATION_TILESIZE_BIG * 9 / 4)
+
+#define DOMAINTXFMRF_PARAMS_BITS 6
+#define DOMAINTXFMRF_PARAMS (1 << DOMAINTXFMRF_PARAMS_BITS)
+#define DOMAINTXFMRF_SIGMA_SCALEBITS 4
+#define DOMAINTXFMRF_SIGMA_SCALE (1 << DOMAINTXFMRF_SIGMA_SCALEBITS)
+#define DOMAINTXFMRF_ITERS 3
+#define DOMAINTXFMRF_VTABLE_PRECBITS 8
+#define DOMAINTXFMRF_VTABLE_PREC (1 << DOMAINTXFMRF_VTABLE_PRECBITS)
+#define DOMAINTXFMRF_MULT \
+  sqrt(((1 << (DOMAINTXFMRF_ITERS * 2)) - 1) * 2.0 / 3.0)
+#define DOMAINTXFMRF_TMPBUF_SIZE (RESTORATION_TILEPELS_MAX)
+#define DOMAINTXFMRF_BITS (DOMAINTXFMRF_PARAMS_BITS)
+
+#define SGRPROJ_TMPBUF_SIZE (RESTORATION_TILEPELS_MAX * 6 * 8)
+#define SGRPROJ_PARAMS_BITS 3
+#define SGRPROJ_PARAMS (1 << SGRPROJ_PARAMS_BITS)
+
+// Precision bits for projection
+#define SGRPROJ_PRJ_BITS 7
+// Restoration precision bits generated higher than source before projection
+#define SGRPROJ_RST_BITS 4
+// Internal precision bits for core selfguided_restoration
+#define SGRPROJ_SGR_BITS 8
+#define SGRPROJ_SGR (1 << SGRPROJ_SGR_BITS)
+
+#define SGRPROJ_PRJ_MIN0 (-(1 << SGRPROJ_PRJ_BITS) / 4)
+#define SGRPROJ_PRJ_MAX0 (SGRPROJ_PRJ_MIN0 + (1 << SGRPROJ_PRJ_BITS) - 1)
+#define SGRPROJ_PRJ_MIN1 (-(1 << SGRPROJ_PRJ_BITS) / 4)
+#define SGRPROJ_PRJ_MAX1 (SGRPROJ_PRJ_MIN1 + (1 << SGRPROJ_PRJ_BITS) - 1)
+
+#define SGRPROJ_BITS (SGRPROJ_PRJ_BITS * 2 + SGRPROJ_PARAMS_BITS)
+
 #define BILATERAL_LEVEL_BITS_KF 4
 #define BILATERAL_LEVELS_KF (1 << BILATERAL_LEVEL_BITS_KF)
 #define BILATERAL_LEVEL_BITS 3
 #define BILATERAL_LEVELS (1 << BILATERAL_LEVEL_BITS)
-// #define DEF_BILATERAL_LEVEL     2
 
-#define RESTORATION_TILESIZE_SML 128
-#define RESTORATION_TILESIZE_BIG 256
 #define BILATERAL_SUBTILE_BITS 1
 #define BILATERAL_SUBTILES (1 << (2 * BILATERAL_SUBTILE_BITS))
 
@@ -65,12 +102,34 @@ typedef struct {
 } WienerInfo;
 
 typedef struct {
+  int r1;
+  int e1;
+  int r2;
+  int e2;
+} sgr_params_type;
+
+typedef struct {
+  int level;
+  int ep;
+  int xqd[2];
+} SgrprojInfo;
+
+typedef struct {
+  int level;
+  int sigma_r;
+} DomaintxfmrfInfo;
+
+typedef struct {
   RestorationType frame_restoration_type;
   RestorationType *restoration_type;
   // Bilateral filter
   BilateralInfo *bilateral_info;
   // Wiener filter
   WienerInfo *wiener_info;
+  // Selfguided proj filter
+  SgrprojInfo *sgrproj_info;
+  // Domain transform filter
+  DomaintxfmrfInfo *domaintxfmrf_info;
 } RestorationInfo;
 
 typedef struct {
@@ -140,6 +199,17 @@ static INLINE void av1_get_rest_tile_limits(
   }
 }
 
+extern const sgr_params_type sgr_params[SGRPROJ_PARAMS];
+
+void av1_selfguided_restoration(int64_t *dgd, int width, int height, int stride,
+                                int bit_depth, int r, int eps, void *tmpbuf);
+void av1_domaintxfmrf_restoration(uint8_t *dgd, int width, int height,
+                                  int stride, int param);
+#if CONFIG_AOM_HIGHBITDEPTH
+void av1_domaintxfmrf_restoration_highbd(uint16_t *dgd, int width, int height,
+                                         int stride, int param, int bit_depth);
+#endif  // CONFIG_AOM_HIGHBITDEPTH
+void decode_xq(int *xqd, int *xq);
 int av1_bilateral_level_bits(const struct AV1Common *const cm);
 void av1_loop_restoration_init(RestorationInternal *rst, RestorationInfo *rsi,
                                int kf, int width, int height);

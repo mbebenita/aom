@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-#if CONFIG_SIMP_MV_PRED
+#if CONFIG_REF_MV
 #define MVREF_NEIGHBOURS 9
 #else
 #define MVREF_NEIGHBOURS 8
@@ -55,11 +55,14 @@ static const int mode_2_counter[MB_MODE_COUNT] = {
   9,  // D153_PRED
   9,  // D207_PRED
   9,  // D63_PRED
-  9,  // TM_PRED
-  0,  // NEARESTMV
-  0,  // NEARMV
-  3,  // ZEROMV
-  1,  // NEWMV
+#if CONFIG_ALT_INTRA
+  9,    // SMOOTH_PRED
+#endif  // CONFIG_ALT_INTRA
+  9,    // TM_PRED
+  0,    // NEARESTMV
+  0,    // NEARMV
+  3,    // ZEROMV
+  1,    // NEWMV
 #if CONFIG_EXT_INTER
   1,    // NEWFROMNEARMV
   0,    // NEAREST_NEARESTMV
@@ -100,7 +103,7 @@ static const int counter_to_context[19] = {
   BOTH_INTRA             // 18
 };
 
-#if !CONFIG_SIMP_MV_PRED
+#if !CONFIG_REF_MV
 static const POSITION mv_ref_blocks[BLOCK_SIZES][MVREF_NEIGHBOURS] = {
   // 4X4
   { { -1, 0 },
@@ -274,7 +277,9 @@ static INLINE void clamp_mv_ref(MV *mv, int bw, int bh, const MACROBLOCKD *xd) {
 // on whether the block_size < 8x8 and we have check_sub_blocks set.
 static INLINE int_mv get_sub_block_mv(const MODE_INFO *candidate, int which_mv,
                                       int search_col, int block_idx) {
-#if CONFIG_SIMP_MV_PRED
+#if CONFIG_REF_MV
+  (void)search_col;
+  (void)block_idx;
   return candidate->mbmi.mv[which_mv];
 #else
   return block_idx >= 0 && candidate->mbmi.sb_type < BLOCK_8X8
@@ -289,15 +294,9 @@ static INLINE int_mv get_sub_block_mv(const MODE_INFO *candidate, int which_mv,
 static INLINE int_mv get_sub_block_pred_mv(const MODE_INFO *candidate,
                                            int which_mv, int search_col,
                                            int block_idx) {
-#if CONFIG_SIMP_MV_PRED
+  (void)search_col;
+  (void)block_idx;
   return candidate->mbmi.mv[which_mv];
-#else
-  return block_idx >= 0 && candidate->mbmi.sb_type < BLOCK_8X8
-             ? candidate
-                   ->bmi[idx_n_column_to_subblock[block_idx][search_col == 0]]
-                   .pred_mv[which_mv]
-             : candidate->mbmi.pred_mv[which_mv];
-#endif
 }
 #endif
 
@@ -362,24 +361,24 @@ static INLINE void lower_mv_precision(MV *mv, int allow_hp) {
 }
 
 #if CONFIG_REF_MV
+static INLINE uint8_t av1_get_pred_diff_ctx(const int_mv pred_mv,
+                                            const int_mv this_mv) {
+  if (abs(this_mv.as_mv.row - pred_mv.as_mv.row) <= 4 &&
+      abs(this_mv.as_mv.col - pred_mv.as_mv.col) <= 4)
+    return 2;
+  else
+    return 1;
+}
+
 static INLINE int av1_nmv_ctx(const uint8_t ref_mv_count,
                               const CANDIDATE_MV *ref_mv_stack, int ref,
                               int ref_mv_idx) {
-  int_mv this_mv = (ref == 0) ? ref_mv_stack[ref_mv_idx].this_mv
-                              : ref_mv_stack[ref_mv_idx].comp_mv;
 #if CONFIG_EXT_INTER
   return 0;
 #endif
 
-  if (ref_mv_stack[ref_mv_idx].weight >= REF_CAT_LEVEL && ref_mv_count > 0) {
-    if (abs(this_mv.as_mv.row -
-            ref_mv_stack[ref_mv_idx].pred_mv[ref].as_mv.row) <= 4 &&
-        abs(this_mv.as_mv.col -
-            ref_mv_stack[ref_mv_idx].pred_mv[ref].as_mv.col) <= 4)
-      return 2;
-    else
-      return 1;
-  }
+  if (ref_mv_stack[ref_mv_idx].weight >= REF_CAT_LEVEL && ref_mv_count > 0)
+    return ref_mv_stack[ref_mv_idx].pred_diff[ref];
 
   return 0;
 }
@@ -433,12 +432,7 @@ static INLINE int16_t av1_mode_context_analyzer(
     return mode_ctx;
   }
 
-  if (rf[1] > INTRA_FRAME)
-    return mode_context[rf[0]] & (mode_context[rf[1]] | 0x00ff);
-  else if (rf[0] != ALTREF_FRAME)
-    return mode_context[rf[0]] & ~(mode_context[ALTREF_FRAME] & 0xfe00);
-  else
-    return mode_context[ref_frame_type];
+  return mode_context[ref_frame_type];
 }
 
 static INLINE uint8_t av1_drl_ctx(const CANDIDATE_MV *ref_mv_stack,
@@ -496,6 +490,11 @@ void av1_update_mv_context(const MACROBLOCKD *xd, MODE_INFO *mi,
                            int block, int mi_row, int mi_col,
                            int16_t *mode_context);
 #endif  // CONFIG_EXT_INTER
+
+#if CONFIG_WARPED_MOTION
+int findSamples(const AV1_COMMON *cm, MACROBLOCKD *xd, int mi_row, int mi_col,
+                double *pts, double *pts_inref);
+#endif  // CONFIG_WARPED_MOTION
 
 #ifdef __cplusplus
 }  // extern "C"

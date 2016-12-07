@@ -393,7 +393,7 @@ typedef struct AV1Common {
   aom_cdf_prob kf_y_cdf[INTRA_MODES][INTRA_MODES][INTRA_MODES];
 #endif
 #if CONFIG_GLOBAL_MOTION
-  Global_Motion_Params global_motion[TOTAL_REFS_PER_FRAME];
+  WarpedMotionParams global_motion[TOTAL_REFS_PER_FRAME];
 #endif
 
   BLOCK_SIZE sb_size;  // Size of the superblock used for this frame
@@ -810,24 +810,13 @@ static INLINE int txfm_partition_context(TXFM_CONTEXT *above_ctx,
   const int above = *above_ctx < txw;
   const int left = *left_ctx < txh;
   TX_SIZE max_tx_size = max_txsize_lookup[bsize];
-  int category = 15;
+  int category = TXFM_PARTITION_CONTEXTS - 1;
 
-  if (max_tx_size == TX_32X32) {
-    if (tx_size == TX_32X32)
-      category = 0;
-    else
-      category = 1;
-  } else if (max_tx_size == TX_16X16) {
-    if (tx_size == TX_16X16)
-      category = 2;
-    else
-      category = 3;
-  } else if (max_tx_size == TX_8X8) {
-    category = 4;
+  if (max_tx_size >= TX_8X8) {
+    category = (tx_size != max_tx_size && max_tx_size > TX_8X8) +
+               (TX_SIZES - 1 - max_tx_size) * 2;
   }
-
-  if (category == 15) return category;
-
+  if (category == TXFM_PARTITION_CONTEXTS - 1) return category;
   return category * 3 + above + left;
 }
 #endif

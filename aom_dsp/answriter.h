@@ -57,25 +57,41 @@ static INLINE void ans_write_init(struct AnsCoder *const ans,
 
 static INLINE int ans_write_end(struct AnsCoder *const ans) {
   uint32_t state;
+  int ans_size;
   assert(ans->state >= L_BASE);
   assert(ans->state < L_BASE * IO_BASE);
   state = ans->state - L_BASE;
-  if (state < (1 << 6)) {
-    ans->buf[ans->buf_offset] = (0x00 << 6) + state;
-    return ans->buf_offset + 1;
-  } else if (state < (1 << 14)) {
-    mem_put_le16(ans->buf + ans->buf_offset, (0x01 << 14) + state);
-    return ans->buf_offset + 2;
-  } else if (state < (1 << 22)) {
-    mem_put_le24(ans->buf + ans->buf_offset, (0x02 << 22) + state);
-    return ans->buf_offset + 3;
-  } else if (state < (1 << 29)) {
-    mem_put_le32(ans->buf + ans->buf_offset, (0x07 << 29) + state);
-    return ans->buf_offset + 4;
+  if (state < (1u << 15)) {
+    mem_put_le16(ans->buf + ans->buf_offset, (0x00u << 15) + state);
+    ans_size = ans->buf_offset + 2;
+#if ANS_REVERSE
+  } else if (state < (1u << 23)) {
+    mem_put_le24(ans->buf + ans->buf_offset, (0x01u << 23) + state);
+    ans_size = ans->buf_offset + 3;
+#else
+  } else if (state < (1u << 22)) {
+    mem_put_le24(ans->buf + ans->buf_offset, (0x02u << 22) + state);
+    ans_size = ans->buf_offset + 3;
+  } else if (state < (1u << 29)) {
+    mem_put_le32(ans->buf + ans->buf_offset, (0x07u << 29) + state);
+    ans_size = ans->buf_offset + 4;
+#endif
   } else {
     assert(0 && "State is too large to be serialized");
     return ans->buf_offset;
   }
+#if ANS_REVERSE
+  {
+    int i;
+    uint8_t tmp;
+    for (i = 0; i < (ans_size >> 1); i++) {
+      tmp = ans->buf[i];
+      ans->buf[i] = ans->buf[ans_size - 1 - i];
+      ans->buf[ans_size - 1 - i] = tmp;
+    }
+  }
+#endif
+  return ans_size;
 }
 
 // uABS with normalization

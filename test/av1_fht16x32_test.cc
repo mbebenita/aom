@@ -1,11 +1,12 @@
 /*
- *  Copyright (c) 2016 The WebM project authors. All Rights Reserved.
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved
  *
- *  Use of this source code is governed by a BSD-style license
- *  that can be found in the LICENSE file in the root of the source
- *  tree. An additional intellectual property rights grant can be found
- *  in the file PATENTS.  All contributing project authors may
- *  be found in the AUTHORS file in the root of the source tree.
+ * This source code is subject to the terms of the BSD 2 Clause License and
+ * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
+ * was not distributed with this source code in the LICENSE file, you can
+ * obtain it at www.aomedia.org/license/software. If the Alliance for Open
+ * Media Patent License 1.0 was not distributed with this source code in the
+ * PATENTS file, you can obtain it at www.aomedia.org/license/patent.
  */
 
 #include "third_party/googletest/src/include/gtest/gtest.h"
@@ -69,10 +70,35 @@ class AV1Trans16x32HT : public libaom_test::TransformTestBase,
   IhtFunc inv_txfm_;
 };
 
+TEST_P(AV1Trans16x32HT, AccuracyCheck) { RunAccuracyCheck(1); }
 TEST_P(AV1Trans16x32HT, CoeffCheck) { RunCoeffCheck(); }
+TEST_P(AV1Trans16x32HT, MemCheck) { RunMemCheck(); }
 TEST_P(AV1Trans16x32HT, InvCoeffCheck) { RunInvCoeffCheck(); }
+TEST_P(AV1Trans16x32HT, InvAccuracyCheck) { RunInvAccuracyCheck(1); }
 
 using std::tr1::make_tuple;
+const Ht16x32Param kArrayHt16x32Param_c[] = {
+  make_tuple(&av1_fht16x32_c, &av1_iht16x32_512_add_c, 0, AOM_BITS_8, 512),
+  make_tuple(&av1_fht16x32_c, &av1_iht16x32_512_add_c, 1, AOM_BITS_8, 512),
+  make_tuple(&av1_fht16x32_c, &av1_iht16x32_512_add_c, 2, AOM_BITS_8, 512),
+  make_tuple(&av1_fht16x32_c, &av1_iht16x32_512_add_c, 3, AOM_BITS_8, 512),
+#if CONFIG_EXT_TX
+  make_tuple(&av1_fht16x32_c, &av1_iht16x32_512_add_c, 4, AOM_BITS_8, 512),
+  make_tuple(&av1_fht16x32_c, &av1_iht16x32_512_add_c, 5, AOM_BITS_8, 512),
+  make_tuple(&av1_fht16x32_c, &av1_iht16x32_512_add_c, 6, AOM_BITS_8, 512),
+  make_tuple(&av1_fht16x32_c, &av1_iht16x32_512_add_c, 7, AOM_BITS_8, 512),
+  make_tuple(&av1_fht16x32_c, &av1_iht16x32_512_add_c, 8, AOM_BITS_8, 512),
+  make_tuple(&av1_fht16x32_c, &av1_iht16x32_512_add_c, 9, AOM_BITS_8, 512),
+  make_tuple(&av1_fht16x32_c, &av1_iht16x32_512_add_c, 10, AOM_BITS_8, 512),
+  make_tuple(&av1_fht16x32_c, &av1_iht16x32_512_add_c, 11, AOM_BITS_8, 512),
+  make_tuple(&av1_fht16x32_c, &av1_iht16x32_512_add_c, 12, AOM_BITS_8, 512),
+  make_tuple(&av1_fht16x32_c, &av1_iht16x32_512_add_c, 13, AOM_BITS_8, 512),
+  make_tuple(&av1_fht16x32_c, &av1_iht16x32_512_add_c, 14, AOM_BITS_8, 512),
+  make_tuple(&av1_fht16x32_c, &av1_iht16x32_512_add_c, 15, AOM_BITS_8, 512)
+#endif  // CONFIG_EXT_TX
+};
+INSTANTIATE_TEST_CASE_P(C, AV1Trans16x32HT,
+                        ::testing::ValuesIn(kArrayHt16x32Param_c));
 
 #if HAVE_SSE2
 const Ht16x32Param kArrayHt16x32Param_sse2[] = {

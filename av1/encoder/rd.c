@@ -63,6 +63,9 @@ void av1_rd_cost_init(RD_COST *rd_cost) {
 // This table is used to correct for block size.
 // The factors here are << 2 (2 = x0.5, 32 = x8 etc).
 static const uint8_t rd_thresh_block_size_factor[BLOCK_SIZES] = {
+#if CONFIG_CB4X4
+  2,  2,  2,
+#endif
   2,  3,  3, 4, 6, 6, 8, 12, 12, 16, 24, 24, 32,
 #if CONFIG_EXT_PARTITION
   48, 48, 64
@@ -159,7 +162,7 @@ void av1_fill_token_costs(av1_coeff_cost *c,
                           av1_coeff_probs_model (*p)[PLANE_TYPES]) {
   int i, j, k, l;
   TX_SIZE t;
-  for (t = TX_4X4; t <= TX_32X32; ++t)
+  for (t = TX_4X4; t < TX_SIZES; ++t)
     for (i = 0; i < PLANE_TYPES; ++i)
       for (j = 0; j < REF_TYPES; ++j)
         for (k = 0; k < COEF_BANDS; ++k)
@@ -346,6 +349,9 @@ void av1_initialize_rd_consts(AV1_COMP *cpi) {
   MACROBLOCK *const x = &cpi->td.mb;
   RD_OPT *const rd = &cpi->rd;
   int i;
+#if CONFIG_REF_MV
+  int nmv_ctx;
+#endif
 
   aom_clear_system_state();
 
@@ -356,28 +362,24 @@ void av1_initialize_rd_consts(AV1_COMP *cpi) {
 
   set_block_thresholds(cm, rd);
 
-  if (!frame_is_intra_only(cm)) {
 #if CONFIG_REF_MV
-    int nmv_ctx;
-
-    for (nmv_ctx = 0; nmv_ctx < NMV_CONTEXTS; ++nmv_ctx) {
-      av1_build_nmv_cost_table(
-          x->nmv_vec_cost[nmv_ctx],
-          cm->allow_high_precision_mv ? x->nmvcost_hp[nmv_ctx]
-                                      : x->nmvcost[nmv_ctx],
-          &cm->fc->nmvc[nmv_ctx], cm->allow_high_precision_mv);
-    }
-    x->mvcost = x->mv_cost_stack[0];
-    x->nmvjointcost = x->nmv_vec_cost[0];
-    x->mvsadcost = x->mvcost;
-    x->nmvjointsadcost = x->nmvjointcost;
-#else
+  for (nmv_ctx = 0; nmv_ctx < NMV_CONTEXTS; ++nmv_ctx) {
     av1_build_nmv_cost_table(
-        x->nmvjointcost,
-        cm->allow_high_precision_mv ? x->nmvcost_hp : x->nmvcost, &cm->fc->nmvc,
-        cm->allow_high_precision_mv);
-#endif
+        x->nmv_vec_cost[nmv_ctx],
+        cm->allow_high_precision_mv ? x->nmvcost_hp[nmv_ctx]
+                                    : x->nmvcost[nmv_ctx],
+        &cm->fc->nmvc[nmv_ctx], cm->allow_high_precision_mv);
   }
+  x->mvcost = x->mv_cost_stack[0];
+  x->nmvjointcost = x->nmv_vec_cost[0];
+  x->mvsadcost = x->mvcost;
+  x->nmvjointsadcost = x->nmvjointcost;
+#else
+  av1_build_nmv_cost_table(
+      x->nmvjointcost, cm->allow_high_precision_mv ? x->nmvcost_hp : x->nmvcost,
+      &cm->fc->nmvc, cm->allow_high_precision_mv);
+#endif
+
   if (cpi->oxcf.pass != 1) {
     av1_fill_token_costs(x->token_costs, cm->fc->coef_probs);
 
@@ -443,6 +445,12 @@ void av1_initialize_rd_consts(AV1_COMP *cpi) {
         av1_cost_tokens((int *)cpi->motion_mode_cost[i],
                         cm->fc->motion_mode_prob[i], av1_motion_mode_tree);
       }
+#if CONFIG_MOTION_VAR && CONFIG_WARPED_MOTION
+      for (i = BLOCK_8X8; i < BLOCK_SIZES; i++) {
+        cpi->motion_mode_cost1[i][0] = av1_cost_bit(cm->fc->obmc_prob[i], 0);
+        cpi->motion_mode_cost1[i][1] = av1_cost_bit(cm->fc->obmc_prob[i], 1);
+      }
+#endif  // CONFIG_MOTION_VAR && CONFIG_WARPED_MOTION
 #endif  // CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
     }
   }
@@ -542,13 +550,16 @@ static void get_entropy_contexts_plane(
     BLOCK_SIZE plane_bsize, TX_SIZE tx_size, const struct macroblockd_plane *pd,
     ENTROPY_CONTEXT t_above[2 * MAX_MIB_SIZE],
     ENTROPY_CONTEXT t_left[2 * MAX_MIB_SIZE]) {
-  const int num_4x4_w = num_4x4_blocks_wide_lookup[plane_bsize];
-  const int num_4x4_h = num_4x4_blocks_high_lookup[plane_bsize];
+  const int num_4x4_w = block_size_wide[plane_bsize] >> tx_size_wide_log2[0];
+  const int num_4x4_h = block_size_high[plane_bsize] >> tx_size_high_log2[0];
   const ENTROPY_CONTEXT *const above = pd->above_context;
   const ENTROPY_CONTEXT *const left = pd->left_context;
 
   int i;
   switch (tx_size) {
+#if CONFIG_CB4X4
+    case TX_2X2:
+#endif
     case TX_4X4:
       memcpy(t_above, above, sizeof(ENTROPY_CONTEXT) * num_4x4_w);
       memcpy(t_left, left, sizeof(ENTROPY_CONTEXT) * num_4x4_h);
@@ -571,6 +582,16 @@ static void get_entropy_contexts_plane(
       for (i = 0; i < num_4x4_h; i += 8)
         t_left[i] = !!*(const uint64_t *)&left[i];
       break;
+#if CONFIG_TX64X64
+    case TX_64X64:
+      for (i = 0; i < num_4x4_w; i += 16)
+        t_above[i] =
+            !!(*(const uint64_t *)&above[i] | *(const uint64_t *)&above[i + 8]);
+      for (i = 0; i < num_4x4_h; i += 16)
+        t_left[i] =
+            !!(*(const uint64_t *)&left[i] | *(const uint64_t *)&left[i + 8]);
+      break;
+#endif  // CONFIG_TX64X64
     case TX_4X8:
       memcpy(t_above, above, sizeof(ENTROPY_CONTEXT) * num_4x4_w);
       for (i = 0; i < num_4x4_h; i += 2)
@@ -702,7 +723,7 @@ int av1_raster_block_offset(BLOCK_SIZE plane_bsize, int raster_block,
 
 int16_t *av1_raster_block_offset_int16(BLOCK_SIZE plane_bsize, int raster_block,
                                        int16_t *base) {
-  const int stride = 4 * num_4x4_blocks_wide_lookup[plane_bsize];
+  const int stride = block_size_wide[plane_bsize];
   return base + av1_raster_block_offset(plane_bsize, raster_block, stride);
 }
 

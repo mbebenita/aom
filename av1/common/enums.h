@@ -35,7 +35,11 @@ extern "C" {
 #define MIN_SB_SIZE_LOG2 6
 
 // Pixels per Mode Info (MI) unit
+#if CONFIG_CB4X4
+#define MI_SIZE_LOG2 2
+#else
 #define MI_SIZE_LOG2 3
+#endif
 #define MI_SIZE (1 << MI_SIZE_LOG2)
 
 // MI-units per max superblock (MI Block - MIB)
@@ -81,6 +85,11 @@ typedef enum BITSTREAM_PROFILE {
 // type, so that we can save memory when they are used in structs/arrays.
 
 typedef enum ATTRIBUTE_PACKED {
+#if CONFIG_CB4X4
+  BLOCK_2X2,
+  BLOCK_2X4,
+  BLOCK_4X2,
+#endif
   BLOCK_4X4,
   BLOCK_4X8,
   BLOCK_8X4,
@@ -99,7 +108,6 @@ typedef enum ATTRIBUTE_PACKED {
   BLOCK_128X64,
   BLOCK_128X128,
 #endif  // CONFIG_EXT_PARTITION
-
   BLOCK_SIZES,
   BLOCK_INVALID = BLOCK_SIZES,
   BLOCK_LARGEST = (BLOCK_SIZES - 1)
@@ -157,7 +165,7 @@ typedef enum ATTRIBUTE_PACKED {
   TX_INVALID = 255    // Invalid transform size
 } TX_SIZE;
 
-#define MAX_TX_DEPTH (TX_32X32 - TX_4X4)
+#define MAX_TX_DEPTH (TX_SIZES - 1 - TX_4X4)
 
 #define MAX_TX_SIZE_LOG2 (5 + CONFIG_TX64X64)
 #define MAX_TX_SIZE (1 << MAX_TX_SIZE_LOG2)
@@ -173,12 +181,15 @@ typedef enum ATTRIBUTE_PACKED {
 
 // frame transform mode
 typedef enum {
-  ONLY_4X4 = 0,        // only 4x4 transform used
-  ALLOW_8X8 = 1,       // allow block transform size up to 8x8
-  ALLOW_16X16 = 2,     // allow block transform size up to 16x16
-  ALLOW_32X32 = 3,     // allow block transform size up to 32x32
-  TX_MODE_SELECT = 4,  // transform specified for each block
-  TX_MODES = 5,
+  ONLY_4X4 = 0,     // only 4x4 transform used
+  ALLOW_8X8 = 1,    // allow block transform size up to 8x8
+  ALLOW_16X16 = 2,  // allow block transform size up to 16x16
+  ALLOW_32X32 = 3,  // allow block transform size up to 32x32
+#if CONFIG_TX64X64
+  ALLOW_64X64 = 4,  // allow block transform size up to 64x64
+#endif
+  TX_MODE_SELECT,  // transform specified for each block
+  TX_MODES,
 } TX_MODE;
 
 // 1D tx types
@@ -287,7 +298,10 @@ typedef enum ATTRIBUTE_PACKED {
   D153_PRED,  // Directional 153 deg = 180 - 27
   D207_PRED,  // Directional 207 deg = 180 + 27
   D63_PRED,   // Directional 63  deg = round(arctan(2/1) * 180/pi)
-  TM_PRED,    // True-motion
+#if CONFIG_ALT_INTRA
+  SMOOTH_PRED,  // Combination of horizontal and vertical interpolation
+#endif          // CONFIG_ALT_INTRA
+  TM_PRED,      // True-motion
   NEARESTMV,
   NEARMV,
   ZEROMV,
@@ -320,6 +334,8 @@ typedef enum {
   MOTION_MODES
 } MOTION_MODE;
 
+// TODO(urvang): Consider adding II_SMOOTH_PRED if it's helpful.
+
 #if CONFIG_EXT_INTER
 typedef enum {
   II_DC_PRED = 0,
@@ -335,8 +351,14 @@ typedef enum {
   INTERINTRA_MODES
 } INTERINTRA_MODE;
 
+typedef enum {
+  COMPOUND_AVERAGE = 0,
+  COMPOUND_WEDGE,
+  COMPOUND_TYPES,
+} COMPOUND_TYPE;
 #endif  // CONFIG_EXT_INTER
 
+// TODO(huisu): Consider adding FILTER_SMOOTH_PRED to "FILTER_INTRA_MODE".
 #if CONFIG_FILTER_INTRA
 typedef enum {
   FILTER_DC_PRED,
@@ -414,7 +436,7 @@ typedef enum {
 #define REF_CONTEXTS 5
 
 #if CONFIG_VAR_TX
-#define TXFM_PARTITION_CONTEXTS 16
+#define TXFM_PARTITION_CONTEXTS ((TX_SIZES - TX_8X8) * 6 - 2)
 typedef uint8_t TXFM_CONTEXT;
 #endif
 
@@ -463,10 +485,12 @@ typedef uint8_t TXFM_CONTEXT;
 
 #if CONFIG_LOOP_RESTORATION
 typedef enum {
-  RESTORE_NONE,
-  RESTORE_BILATERAL,
-  RESTORE_WIENER,
-  RESTORE_SWITCHABLE,
+  RESTORE_NONE = 0,
+  RESTORE_SGRPROJ = 1,
+  RESTORE_BILATERAL = 2,
+  RESTORE_WIENER = 3,
+  RESTORE_DOMAINTXFMRF = 4,
+  RESTORE_SWITCHABLE = 5,
   RESTORE_SWITCHABLE_TYPES = RESTORE_SWITCHABLE,
   RESTORE_TYPES,
 } RestorationType;

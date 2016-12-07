@@ -27,12 +27,11 @@ extern "C" {
 
 #if CONFIG_EXT_INTERP
 #define EIGHTTAP_SMOOTH2 3
-#define MULTITAP_SHARP2 4
 
 #define MAX_SUBPEL_TAPS 12
 
 #define SUPPORT_NONINTERPOLATING_FILTERS 0 /* turn on for experimentation */
-#define SWITCHABLE_FILTERS 5               /* Number of switchable filters */
+#define SWITCHABLE_FILTERS 4               /* Number of switchable filters */
 #define LOG_SWITCHABLE_FILTERS \
   3 /* (1 << LOG_SWITCHABLE_FILTERS) > SWITCHABLE_FILTERS */
 #else
@@ -43,7 +42,7 @@ extern "C" {
 
 #define USE_TEMPORALFILTER_12TAP 1
 #if USE_TEMPORALFILTER_12TAP
-#define TEMPORALFILTER_12TAP (SWITCHABLE_FILTERS + 1)
+#define TEMPORALFILTER_12TAP (SWITCHABLE_FILTERS + 2)
 #endif
 
 // The codec can operate in four possible inter prediction filter mode:
@@ -52,11 +51,14 @@ extern "C" {
 #define BILINEAR (SWITCHABLE_FILTERS)
 #define SWITCHABLE (SWITCHABLE_FILTERS + 1) /* the last one */
 #if CONFIG_DUAL_FILTER
+#define EIGHTTAP_SHARP (SWITCHABLE_FILTERS + 1)
+#define EXTRA_FILTERS 2
 #define SWITCHABLE_FILTER_CONTEXTS ((SWITCHABLE_FILTERS + 1) * 4)
 #define INTER_FILTER_COMP_OFFSET (SWITCHABLE_FILTERS + 1)
 #define INTER_FILTER_DIR_OFFSET ((SWITCHABLE_FILTERS + 1) * 2)
 #else
 #define SWITCHABLE_FILTER_CONTEXTS (SWITCHABLE_FILTERS + 1)
+#define EXTRA_FILTERS 1
 #endif
 
 typedef uint8_t InterpFilter;

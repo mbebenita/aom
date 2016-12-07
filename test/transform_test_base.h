@@ -1,12 +1,14 @@
 /*
- *  Copyright (c) 2016 The WebM project authors. All Rights Reserved.
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved
  *
- *  Use of this source code is governed by a BSD-style license
- *  that can be found in the LICENSE file in the root of the source
- *  tree. An additional intellectual property rights grant can be found
- *  in the file PATENTS.  All contributing project authors may
- *  be found in the AUTHORS file in the root of the source tree.
+ * This source code is subject to the terms of the BSD 2 Clause License and
+ * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
+ * was not distributed with this source code in the LICENSE file, you can
+ * obtain it at www.aomedia.org/license/software. If the Alliance for Open
+ * Media Patent License 1.0 was not distributed with this source code in the
+ * PATENTS file, you can obtain it at www.aomedia.org/license/patent.
  */
+
 #ifndef TEST_TRANSFORM_TEST_BASE_H_
 #define TEST_TRANSFORM_TEST_BASE_H_
 
@@ -103,10 +105,10 @@ class TransformTestBase {
     }
 
     EXPECT_GE(static_cast<uint32_t>(limit), max_error)
-        << "Error: 4x4 FHT/IHT has an individual round trip error > " << limit;
+        << "Error: FHT/IHT has an individual round trip error > " << limit;
 
     EXPECT_GE(count_test_block * limit, total_error)
-        << "Error: 4x4 FHT/IHT has average round trip error > " << limit
+        << "Error: FHT/IHT has average round trip error > " << limit
         << " per block";
 
     aom_free(test_input_block);
@@ -249,7 +251,9 @@ class TransformTestBase {
       int row_length = FindRowLength();
       // The minimum quant value is 4.
       for (int j = 0; j < num_coeffs_; ++j) {
-        EXPECT_EQ(output_block[j], output_ref_block[j]);
+        EXPECT_EQ(output_block[j], output_ref_block[j])
+            << "Not bit-exact at test index: " << i << ", "
+            << "j = " << j << std::endl;
         EXPECT_GE(row_length * kDctMaxValue << (bit_depth_ - 8),
                   abs(output_block[j]))
             << "Error: NxN FDCT has coefficient larger than N*DCT_MAX_VALUE";

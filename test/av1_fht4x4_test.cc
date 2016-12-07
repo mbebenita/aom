@@ -1,11 +1,12 @@
 /*
- *  Copyright (c) 2016 The WebM project authors. All Rights Reserved.
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved
  *
- *  Use of this source code is governed by a BSD-style license
- *  that can be found in the LICENSE file in the root of the source
- *  tree. An additional intellectual property rights grant can be found
- *  in the file PATENTS.  All contributing project authors may
- *  be found in the AUTHORS file in the root of the source tree.
+ * This source code is subject to the terms of the BSD 2 Clause License and
+ * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
+ * was not distributed with this source code in the LICENSE file, you can
+ * obtain it at www.aomedia.org/license/software. If the Alliance for Open
+ * Media Patent License 1.0 was not distributed with this source code in the
+ * PATENTS file, you can obtain it at www.aomedia.org/license/patent.
  */
 
 #include "third_party/googletest/src/include/gtest/gtest.h"
@@ -31,6 +32,10 @@ typedef tuple<FhtFunc, IhtFunc, int, aom_bit_depth_t, int> Ht4x4Param;
 
 void fht4x4_ref(const int16_t *in, tran_low_t *out, int stride, int tx_type) {
   av1_fht4x4_c(in, out, stride, tx_type);
+}
+
+void iht4x4_ref(const tran_low_t *in, uint8_t *out, int stride, int tx_type) {
+  av1_iht4x4_16_add_c(in, out, stride, tx_type);
 }
 
 #if CONFIG_AOM_HIGHBITDEPTH
@@ -61,6 +66,7 @@ class AV1Trans4x4HT : public libaom_test::TransformTestBase,
     pitch_ = 4;
     height_ = 4;
     fwd_txfm_ref = fht4x4_ref;
+    inv_txfm_ref = iht4x4_ref;
     bit_depth_ = GET_PARAM(3);
     mask_ = (1 << bit_depth_) - 1;
     num_coeffs_ = GET_PARAM(4);
@@ -80,7 +86,14 @@ class AV1Trans4x4HT : public libaom_test::TransformTestBase,
   IhtFunc inv_txfm_;
 };
 
+TEST_P(AV1Trans4x4HT, MemCheck) { RunMemCheck(); }
 TEST_P(AV1Trans4x4HT, CoeffCheck) { RunCoeffCheck(); }
+// Note:
+//  TODO(luoyi): Add tx_type, 9-15 for inverse transform.
+//  Need cleanup since same tests may be done in fdct4x4_test.cc
+// TEST_P(AV1Trans4x4HT, AccuracyCheck) { RunAccuracyCheck(0); }
+// TEST_P(AV1Trans4x4HT, InvAccuracyCheck) { RunInvAccuracyCheck(0); }
+// TEST_P(AV1Trans4x4HT, InvCoeffCheck) { RunInvCoeffCheck(); }
 
 #if CONFIG_AOM_HIGHBITDEPTH
 class AV1HighbdTrans4x4HT : public ::testing::TestWithParam<HighbdHt4x4Param> {
@@ -152,7 +165,7 @@ TEST_P(AV1HighbdTrans4x4HT, HighbdCoeffCheck) { RunBitexactCheck(); }
 
 using std::tr1::make_tuple;
 
-#if HAVE_SSE2
+#if HAVE_SSE2 && !CONFIG_EMULATE_HARDWARE
 const Ht4x4Param kArrayHt4x4Param_sse2[] = {
   make_tuple(&av1_fht4x4_sse2, &av1_iht4x4_16_add_sse2, 0, AOM_BITS_8, 16),
   make_tuple(&av1_fht4x4_sse2, &av1_iht4x4_16_add_sse2, 1, AOM_BITS_8, 16),
@@ -174,9 +187,9 @@ const Ht4x4Param kArrayHt4x4Param_sse2[] = {
 };
 INSTANTIATE_TEST_CASE_P(SSE2, AV1Trans4x4HT,
                         ::testing::ValuesIn(kArrayHt4x4Param_sse2));
-#endif  // HAVE_SSE2
+#endif  // HAVE_SSE2 && !CONFIG_EMULATE_HARDWARE
 
-#if HAVE_SSE4_1 && CONFIG_AOM_HIGHBITDEPTH
+#if HAVE_SSE4_1 && CONFIG_AOM_HIGHBITDEPTH && !CONFIG_EMULATE_HARDWARE
 const HighbdHt4x4Param kArrayHighbdHt4x4Param[] = {
   make_tuple(&av1_fwd_txfm2d_4x4_sse4_1, 0, 10),
   make_tuple(&av1_fwd_txfm2d_4x4_sse4_1, 0, 12),
@@ -203,6 +216,6 @@ const HighbdHt4x4Param kArrayHighbdHt4x4Param[] = {
 INSTANTIATE_TEST_CASE_P(SSE4_1, AV1HighbdTrans4x4HT,
                         ::testing::ValuesIn(kArrayHighbdHt4x4Param));
 
-#endif  // HAVE_SSE4_1 && CONFIG_AOM_HIGHBITDEPTH
+#endif  // HAVE_SSE4_1 && CONFIG_AOM_HIGHBITDEPTH && !CONFIG_EMULATE_HARDWARE
 
 }  // namespace

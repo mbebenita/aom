@@ -37,7 +37,7 @@ typedef struct mv32 {
 #if CONFIG_GLOBAL_MOTION || CONFIG_WARPED_MOTION
 // Bits of precision used for the model
 #define WARPEDMODEL_PREC_BITS 12
-#define WARPEDMODEL_ROW3HOMO_PREC_BITS 12
+#define WARPEDMODEL_ROW3HOMO_PREC_BITS 14
 
 // Bits of subpel precision for warped interpolation
 #define WARPEDPIXEL_PREC_BITS 6
@@ -51,21 +51,31 @@ typedef struct mv32 {
 
 #define WARPEDDIFF_PREC_BITS (WARPEDMODEL_PREC_BITS - WARPEDPIXEL_PREC_BITS)
 
+/* clang-format off */
 typedef enum {
-  UNKNOWN_TRANSFORM = -1,
-  HOMOGRAPHY,   // homography, 8-parameter
-  AFFINE,       // affine, 6-parameter
-  ROTZOOM,      // simplified affine with rotation and zoom only, 4-parameter
-  TRANSLATION,  // translational motion 2-parameter
-  TRANS_TYPES
+  IDENTITY = 0,     // identity transformation, 0-parameter
+  TRANSLATION = 1,  // translational motion 2-parameter
+  ROTZOOM = 2,      // simplified affine with rotation and zoom only, 4-parameter
+  AFFINE = 3,       // affine, 6-parameter
+  HOMOGRAPHY = 4,   // homography, 8-parameter
+  TRANS_TYPES = 5,
 } TransformationType;
+/* clang-format on */
+
+// Number of types used for global motion (must be <= TRANS_TYPES)
+#define GLOBAL_TRANS_TYPES 3
 
 // number of parameters used by each transformation in TransformationTypes
-static const int n_trans_model_params[TRANS_TYPES] = { 9, 6, 4, 2 };
+static const int n_trans_model_params[TRANS_TYPES] = { 0, 2, 4, 6, 8 };
 
+// The order of values in the wmmat matrix below is best described
+// by the homography:
+// [x'     (m2 m3 m0   [x
+//  y'  =   m4 m5 m1 *  y
+//  1]      m6 m7 1)    1]
 typedef struct {
   TransformationType wmtype;
-  int32_t wmmat[8];  // For homography wmmat[9] is assumed to be 1
+  int32_t wmmat[8];
 } WarpedMotionParams;
 #endif  // CONFIG_GLOBAL_MOTION || CONFIG_WARPED_MOTION
 
@@ -102,61 +112,59 @@ typedef struct {
 #define GM_ALPHA_PREC_DIFF (WARPEDMODEL_PREC_BITS - GM_ALPHA_PREC_BITS)
 #define GM_ALPHA_DECODE_FACTOR (1 << GM_ALPHA_PREC_DIFF)
 
-#define GM_ABS_ALPHA_BITS 9
+#define GM_ROW3HOMO_PREC_BITS 14
+#define GM_ROW3HOMO_PREC_DIFF \
+  (WARPEDMODEL_ROW3HOMO_PREC_BITS - GM_ROW3HOMO_PREC_BITS)
+#define GM_ROW3HOMO_DECODE_FACTOR (1 << GM_ROW3HOMO_PREC_DIFF)
+
 #define GM_ABS_TRANS_BITS 9
+#define GM_ABS_ALPHA_BITS 9
+#define GM_ABS_ROW3HOMO_BITS 9
 
 #define GM_TRANS_MAX (1 << GM_ABS_TRANS_BITS)
 #define GM_ALPHA_MAX (1 << GM_ABS_ALPHA_BITS)
+#define GM_ROW3HOMO_MAX (1 << GM_ABS_ROW3HOMO_BITS)
+
 #define GM_TRANS_MIN -GM_TRANS_MAX
 #define GM_ALPHA_MIN -GM_ALPHA_MAX
-
-typedef enum {
-  GLOBAL_ZERO = 0,
-  GLOBAL_TRANSLATION = 1,
-  GLOBAL_ROTZOOM = 2,
-  GLOBAL_AFFINE = 3,
-  GLOBAL_MOTION_TYPES
-} GLOBAL_MOTION_TYPE;
-
-typedef struct {
-  GLOBAL_MOTION_TYPE gmtype;
-  WarpedMotionParams motion_params;
-} Global_Motion_Params;
+#define GM_ROW3HOMO_MIN -GM_ROW3HOMO_MAX
 
 // Convert a global motion translation vector (which may have more bits than a
 // regular motion vector) into a motion vector
-static INLINE int_mv gm_get_motion_vector(const Global_Motion_Params *gm) {
+static INLINE int_mv gm_get_motion_vector(const WarpedMotionParams *gm,
+                                          int allow_hp) {
   int_mv res;
-  res.as_mv.row = (int16_t)ROUND_POWER_OF_TWO_SIGNED(gm->motion_params.wmmat[0],
-                                                     WARPEDMODEL_PREC_BITS - 3);
-  res.as_mv.col = (int16_t)ROUND_POWER_OF_TWO_SIGNED(gm->motion_params.wmmat[1],
-                                                     WARPEDMODEL_PREC_BITS - 3);
+  res.as_mv.row = allow_hp ? (int16_t)ROUND_POWER_OF_TWO_SIGNED(
+                                 gm->wmmat[1], WARPEDMODEL_PREC_BITS - 3)
+                           : (int16_t)ROUND_POWER_OF_TWO_SIGNED(
+                                 gm->wmmat[1], WARPEDMODEL_PREC_BITS - 2) *
+                                 2;
+  res.as_mv.col = allow_hp ? (int16_t)ROUND_POWER_OF_TWO_SIGNED(
+                                 gm->wmmat[0], WARPEDMODEL_PREC_BITS - 3)
+                           : (int16_t)ROUND_POWER_OF_TWO_SIGNED(
+                                 gm->wmmat[0], WARPEDMODEL_PREC_BITS - 2) *
+                                 2;
   return res;
 }
 
-static INLINE TransformationType gm_to_trans_type(GLOBAL_MOTION_TYPE gmtype) {
-  switch (gmtype) {
-    case GLOBAL_ZERO: return UNKNOWN_TRANSFORM; break;
-    case GLOBAL_TRANSLATION: return TRANSLATION; break;
-    case GLOBAL_ROTZOOM: return ROTZOOM; break;
-    case GLOBAL_AFFINE: return AFFINE; break;
-    default: assert(0);
+static INLINE TransformationType get_gmtype(const WarpedMotionParams *gm) {
+  // if (gm->wmmat[6] != 0 || gm->wmmat[7] != 0) return HOMOGRAPHY;
+  if (gm->wmmat[5] == (1 << WARPEDMODEL_PREC_BITS) && !gm->wmmat[4] &&
+      gm->wmmat[2] == (1 << WARPEDMODEL_PREC_BITS) && !gm->wmmat[3]) {
+    return ((!gm->wmmat[1] && !gm->wmmat[0]) ? IDENTITY : TRANSLATION);
   }
-  return UNKNOWN_TRANSFORM;
+  if (gm->wmmat[2] == gm->wmmat[5] && gm->wmmat[3] == -gm->wmmat[4])
+    return ROTZOOM;
+  else
+    return AFFINE;
 }
 
-static INLINE GLOBAL_MOTION_TYPE get_gmtype(const Global_Motion_Params *gm) {
-  if (!gm->motion_params.wmmat[5] && !gm->motion_params.wmmat[4]) {
-    if (!gm->motion_params.wmmat[3] && !gm->motion_params.wmmat[2]) {
-      return ((!gm->motion_params.wmmat[1] && !gm->motion_params.wmmat[0])
-                  ? GLOBAL_ZERO
-                  : GLOBAL_TRANSLATION);
-    } else {
-      return GLOBAL_ROTZOOM;
-    }
-  } else {
-    return GLOBAL_AFFINE;
-  }
+static INLINE void set_default_gmparams(WarpedMotionParams *wm) {
+  static const int32_t default_wm_mat[8] = {
+    0, 0, (1 << WARPEDMODEL_PREC_BITS), 0, 0, (1 << WARPEDMODEL_PREC_BITS), 0, 0
+  };
+  memcpy(wm->wmmat, default_wm_mat, sizeof(wm->wmmat));
+  wm->wmtype = IDENTITY;
 }
 #endif  // CONFIG_GLOBAL_MOTION
 
@@ -164,7 +172,7 @@ static INLINE GLOBAL_MOTION_TYPE get_gmtype(const Global_Motion_Params *gm) {
 typedef struct candidate_mv {
   int_mv this_mv;
   int_mv comp_mv;
-  int_mv pred_mv[2];
+  uint8_t pred_diff[2];
   int weight;
 } CANDIDATE_MV;
 #endif

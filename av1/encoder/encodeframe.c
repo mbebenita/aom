@@ -40,10 +40,12 @@
 #if CONFIG_SUPERTX
 #include "av1/encoder/cost.h"
 #endif
-#if CONFIG_GLOBAL_MOTION
+#if CONFIG_GLOBAL_MOTION || CONFIG_WARPED_MOTION
 #include "av1/common/warped_motion.h"
+#endif  // CONFIG_GLOBAL_MOTION || CONFIG_WARPED_MOTION
+#if CONFIG_GLOBAL_MOTION
 #include "av1/encoder/global_motion.h"
-#endif
+#endif  // CONFIG_GLOBAL_MOTION
 #include "av1/encoder/encodeframe.h"
 #include "av1/encoder/encodemb.h"
 #include "av1/encoder/encodemv.h"
@@ -674,7 +676,7 @@ static void init_variance_tree(VAR_TREE *const vt,
 
   if (bsize > leaf_size) {
     const BLOCK_SIZE subsize = get_subsize(bsize, PARTITION_SPLIT);
-    const int px = num_4x4_blocks_wide_lookup[subsize] * 4;
+    const int px = block_size_wide[subsize];
 
     init_variance_tree(vt->split[0],
 #if CONFIG_AOM_HIGHBITDEPTH
@@ -917,7 +919,7 @@ static void choose_partitioning(AV1_COMP *const cpi, ThreadData *const td,
       x->pred_mv[LAST_FRAME] = mbmi->mv[0].as_mv;
     }
 
-    av1_build_inter_predictors_sb(xd, mi_row, mi_col, cm->sb_size);
+    av1_build_inter_predictors_sb(xd, mi_row, mi_col, NULL, cm->sb_size);
 
     ref = xd->plane[0].dst.buf;
     ref_stride = xd->plane[0].dst.stride;
@@ -1136,11 +1138,19 @@ static void update_state(const AV1_COMP *const cpi, ThreadData *td,
         (unsigned int *)cpi->mode_chosen_counts;  // Cast const away.
     if (frame_is_intra_only(cm)) {
       static const int kf_mode_index[] = {
-        THR_DC /*DC_PRED*/,          THR_V_PRED /*V_PRED*/,
-        THR_H_PRED /*H_PRED*/,       THR_D45_PRED /*D45_PRED*/,
-        THR_D135_PRED /*D135_PRED*/, THR_D117_PRED /*D117_PRED*/,
-        THR_D153_PRED /*D153_PRED*/, THR_D207_PRED /*D207_PRED*/,
-        THR_D63_PRED /*D63_PRED*/,   THR_TM /*TM_PRED*/,
+        THR_DC /*DC_PRED*/,
+        THR_V_PRED /*V_PRED*/,
+        THR_H_PRED /*H_PRED*/,
+        THR_D45_PRED /*D45_PRED*/,
+        THR_D135_PRED /*D135_PRED*/,
+        THR_D117_PRED /*D117_PRED*/,
+        THR_D153_PRED /*D153_PRED*/,
+        THR_D207_PRED /*D207_PRED*/,
+        THR_D63_PRED /*D63_PRED*/,
+#if CONFIG_ALT_INTRA
+        THR_SMOOTH, /*SMOOTH_PRED*/
+#endif              // CONFIG_ALT_INTRA
+        THR_TM /*TM_PRED*/,
       };
       ++mode_chosen_counts[kf_mode_index[mbmi->mode]];
     } else {
@@ -1174,7 +1184,10 @@ static void update_state(const AV1_COMP *const cpi, ThreadData *td,
 #if CONFIG_EXT_INTERP
           && av1_is_interp_needed(xd)
 #endif
-              ) {
+#if CONFIG_WARPED_MOTION
+          && mbmi->motion_mode != WARPED_CAUSAL
+#endif  // CONFIG_WARPED_MOTION
+          ) {
 #if CONFIG_DUAL_FILTER
         update_filter_type_count(td->counts, xd, mbmi);
 #else
@@ -1319,6 +1332,27 @@ static void update_state_supertx(const AV1_COMP *const cpi, ThreadData *td,
 
   if (!frame_is_intra_only(cm)) {
     av1_update_mv_count(td);
+
+#if CONFIG_GLOBAL_MOTION
+    if (is_inter_block(mbmi)) {
+      if (bsize >= BLOCK_8X8) {
+        // TODO(sarahparker): global motion stats need to be handled per-tile
+        // to be compatible with tile-based threading.
+        update_global_motion_used(mbmi->mode, mbmi, (AV1_COMP *)cpi);
+      } else {
+        const int num_4x4_w = num_4x4_blocks_wide_lookup[bsize];
+        const int num_4x4_h = num_4x4_blocks_high_lookup[bsize];
+        int idx, idy;
+        for (idy = 0; idy < 2; idy += num_4x4_h) {
+          for (idx = 0; idx < 2; idx += num_4x4_w) {
+            const int j = idy * 2 + idx;
+            update_global_motion_used(mi->bmi[j].as_mode, mbmi,
+                                      (AV1_COMP *)cpi);
+          }
+        }
+      }
+    }
+#endif  // CONFIG_GLOBAL_MOTION
 
     if (cm->interp_filter == SWITCHABLE
 #if CONFIG_EXT_INTERP
@@ -1943,19 +1977,28 @@ static void update_stats(const AV1_COMMON *const cm, ThreadData *td, int mi_row,
 #if CONFIG_EXT_INTER
           if (mbmi->ref_frame[1] != INTRA_FRAME)
 #endif  // CONFIG_EXT_INTER
-            if (is_motion_variation_allowed(mbmi))
+#if CONFIG_MOTION_VAR && CONFIG_WARPED_MOTION
+          {
+            if (motion_mode_allowed(mbmi) == WARPED_CAUSAL)
               counts->motion_mode[mbmi->sb_type][mbmi->motion_mode]++;
+            else if (motion_mode_allowed(mbmi) == OBMC_CAUSAL)
+              counts->obmc[mbmi->sb_type][mbmi->motion_mode == OBMC_CAUSAL]++;
+          }
+#else
+        if (motion_mode_allowed(mbmi) > SIMPLE_TRANSLATION)
+          counts->motion_mode[mbmi->sb_type][mbmi->motion_mode]++;
+#endif  // CONFIG_MOTION_VAR && CONFIG_WARPED_MOTION
 #endif  // CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
 
 #if CONFIG_EXT_INTER
         if (cm->reference_mode != SINGLE_REFERENCE &&
-            is_inter_compound_mode(mbmi->mode) &&
+            is_inter_compound_mode(mbmi->mode)
 #if CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
-            !(is_motion_variation_allowed(mbmi) &&
-              mbmi->motion_mode != SIMPLE_TRANSLATION) &&
+            && mbmi->motion_mode == SIMPLE_TRANSLATION
 #endif  // CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
-            is_interinter_wedge_used(bsize)) {
-          counts->wedge_interinter[bsize][mbmi->use_wedge_interinter]++;
+            ) {
+          counts->compound_interinter[bsize]
+                                     [mbmi->interinter_compound_data.type]++;
         }
 #endif  // CONFIG_EXT_INTER
       }
@@ -1963,7 +2006,10 @@ static void update_stats(const AV1_COMMON *const cm, ThreadData *td, int mi_row,
 
     if (inter_block &&
         !segfeature_active(&cm->seg, mbmi->segment_id, SEG_LVL_SKIP)) {
-      int16_t mode_ctx = mbmi_ext->mode_context[mbmi->ref_frame[0]];
+      int16_t mode_ctx;
+#if !CONFIG_REF_MV
+      mode_ctx = mbmi_ext->mode_context[mbmi->ref_frame[0]];
+#endif
       if (bsize >= BLOCK_8X8) {
         const PREDICTION_MODE mode = mbmi->mode;
 #if CONFIG_REF_MV
@@ -2282,7 +2328,8 @@ static void encode_sb(const AV1_COMP *const cpi, ThreadData *td,
         update_partition_context(xd, mi_row, mi_col, subsize, bsize);
 #endif
 #if CONFIG_VAR_TX
-      set_txfm_ctxs(supertx_size, mi_width, mi_height, xd);
+      set_txfm_ctxs(supertx_size, mi_width, mi_height, xd->mi[0]->mbmi.skip,
+                    xd);
 #endif  // CONFIG_VAR_TX
       return;
     } else {
@@ -2881,6 +2928,9 @@ static void rd_use_partition(AV1_COMP *cpi, ThreadData *td,
 
 /* clang-format off */
 static const BLOCK_SIZE min_partition_size[BLOCK_SIZES] = {
+#if CONFIG_CB4X4
+  BLOCK_2X2,   BLOCK_2X2,   BLOCK_2X2,    //    2x2,    2x4,     4x2
+#endif
                             BLOCK_4X4,    //                     4x4
   BLOCK_4X4,   BLOCK_4X4,   BLOCK_4X4,    //    4x8,    8x4,     8x8
   BLOCK_4X4,   BLOCK_4X4,   BLOCK_8X8,    //   8x16,   16x8,   16x16
@@ -2892,6 +2942,9 @@ static const BLOCK_SIZE min_partition_size[BLOCK_SIZES] = {
 };
 
 static const BLOCK_SIZE max_partition_size[BLOCK_SIZES] = {
+#if CONFIG_CB4X4
+  BLOCK_4X4,     BLOCK_4X4,       BLOCK_4X4,    //    2x2,    2x4,     4x2
+#endif
                                   BLOCK_8X8,    //                     4x4
   BLOCK_16X16,   BLOCK_16X16,   BLOCK_16X16,    //    4x8,    8x4,     8x8
   BLOCK_32X32,   BLOCK_32X32,   BLOCK_32X32,    //   8x16,   16x8,   16x16
@@ -2904,6 +2957,9 @@ static const BLOCK_SIZE max_partition_size[BLOCK_SIZES] = {
 
 // Next square block size less or equal than current block size.
 static const BLOCK_SIZE next_square_size[BLOCK_SIZES] = {
+#if CONFIG_CB4X4
+  BLOCK_2X2,   BLOCK_2X2,     BLOCK_2X2,    //    2x2,    2x4,     4x2
+#endif
                               BLOCK_4X4,    //                     4x4
   BLOCK_4X4,   BLOCK_4X4,     BLOCK_8X8,    //    4x8,    8x4,     8x8
   BLOCK_8X8,   BLOCK_8X8,     BLOCK_16X16,  //   8x16,   16x8,   16x16
@@ -3132,7 +3188,7 @@ const int complexity_16x16_blocks_threshold[BLOCK_SIZES] = {
   1,
   4,
   4,
-  6
+  6,
 #if CONFIG_EXT_PARTITION
   // TODO(debargha): What are the correct numbers here?
   8,
@@ -4378,7 +4434,7 @@ static void encode_rd_sb_row(AV1_COMP *cpi, ThreadData *td,
       TX_SIZE t;
       SUBFRAME_STATS *subframe_stats = &cpi->subframe_stats;
 
-      for (t = TX_4X4; t <= TX_32X32; ++t)
+      for (t = TX_4X4; t < TX_SIZES; ++t)
         av1_full_to_model_counts(cpi->td.counts->coef[t],
                                  cpi->td.rd_counts.coef_counts[t]);
       av1_partial_adapt_probs(cm, mi_row, mi_col);
@@ -4457,7 +4513,7 @@ static MV_REFERENCE_FRAME get_frame_type(const AV1_COMP *cpi) {
 static TX_MODE select_tx_mode(const AV1_COMP *cpi, MACROBLOCKD *const xd) {
   if (xd->lossless[0]) return ONLY_4X4;
   if (cpi->sf.tx_size_search_method == USE_LARGESTALL)
-    return ALLOW_32X32;
+    return ALLOW_32X32 + CONFIG_TX64X64;
   else if (cpi->sf.tx_size_search_method == USE_FULL_RD ||
            cpi->sf.tx_size_search_method == USE_TX_8X8)
     return TX_MODE_SELECT;
@@ -4612,116 +4668,22 @@ static int input_fpmb_stats(FIRSTPASS_MB_STATS *firstpass_mb_stats,
 #endif
 
 #if CONFIG_GLOBAL_MOTION
-#define MIN_TRANS_THRESH 8
-#define GLOBAL_MOTION_ADVANTAGE_THRESH 0.60
-#define GLOBAL_MOTION_MODEL ROTZOOM
+#define MIN_TRANS_THRESH (1 * GM_TRANS_DECODE_FACTOR)
 
-// Adds some offset to a global motion parameter and handles
-// all of the necessary precision shifts, clamping, and
-// zero-centering.
-static int32_t add_param_offset(int param_index, int32_t param_value,
-                                int32_t offset) {
-  const int scale_vals[2] = { GM_ALPHA_PREC_DIFF, GM_TRANS_PREC_DIFF };
-  const int clamp_vals[2] = { GM_ALPHA_MAX, GM_TRANS_MAX };
-  const int is_trans_param = param_index < 2;
-  const int is_one_centered = (!is_trans_param) && (param_index & 1);
+// Border over which to compute the global motion
+#define ERRORADV_BORDER 0
 
-  // Make parameter zero-centered and offset the shift that was done to make
-  // it compatible with the warped model
-  param_value = (param_value - (is_one_centered << WARPEDMODEL_PREC_BITS)) >>
-                scale_vals[is_trans_param];
-  // Add desired offset to the rescaled/zero-centered parameter
-  param_value += offset;
-  // Clamp the parameter so it does not overflow the number of bits allotted
-  // to it in the bitstream
-  param_value = (int32_t)clamp(param_value, -clamp_vals[is_trans_param],
-                               clamp_vals[is_trans_param]);
-  // Rescale the parameter to WARPEDMODEL_PRECISION_BITS so it is compatible
-  // with the warped motion library
-  param_value *= (1 << scale_vals[is_trans_param]);
+static const double gm_advantage_thresh[TRANS_TYPES] = {
+  1.00,  // Identity (not used)
+  0.85,  // Translation
+  0.75,  // Rot zoom
+  0.65,  // Affine
+  0.50,  // Homography
+};
 
-  // Undo the zero-centering step if necessary
-  return param_value + (is_one_centered << WARPEDMODEL_PREC_BITS);
-}
-
-static void refine_integerized_param(WarpedMotionParams *wm,
-#if CONFIG_AOM_HIGHBITDEPTH
-                                     int use_hbd, int bd,
-#endif  // CONFIG_AOM_HIGHBITDEPTH
-                                     uint8_t *ref, int r_width, int r_height,
-                                     int r_stride, uint8_t *dst, int d_width,
-                                     int d_height, int d_stride,
-                                     int n_refinements) {
-  int i = 0, p;
-  int n_params = n_trans_model_params[wm->wmtype];
-  int32_t *param_mat = wm->wmmat;
-  double step_error;
-  int32_t step;
-  int32_t *param;
-  int32_t curr_param;
-  int32_t best_param;
-
-  double best_error =
-      av1_warp_erroradv(wm,
-#if CONFIG_AOM_HIGHBITDEPTH
-                        use_hbd, bd,
-#endif  // CONFIG_AOM_HIGHBITDEPTH
-                        ref, r_width, r_height, r_stride, dst, 0, 0, d_width,
-                        d_height, d_stride, 0, 0, 16, 16);
-  for (p = 0; p < n_params; ++p) {
-    param = param_mat + p;
-    step = 1 << (n_refinements + 1);
-    curr_param = *param;
-    best_param = curr_param;
-    for (i = 0; i < n_refinements; i++) {
-      // look to the left
-      *param = add_param_offset(p, curr_param, -step);
-      step_error =
-          av1_warp_erroradv(wm,
-#if CONFIG_AOM_HIGHBITDEPTH
-                            use_hbd, bd,
-#endif  // CONFIG_AOM_HIGHBITDEPTH
-                            ref, r_width, r_height, r_stride, dst, 0, 0,
-                            d_width, d_height, d_stride, 0, 0, 16, 16);
-      if (step_error < best_error) {
-        step >>= 1;
-        best_error = step_error;
-        best_param = *param;
-        curr_param = best_param;
-        continue;
-      }
-
-      // look to the right
-      *param = add_param_offset(p, curr_param, step);
-      step_error =
-          av1_warp_erroradv(wm,
-#if CONFIG_AOM_HIGHBITDEPTH
-                            use_hbd, bd,
-#endif  // CONFIG_AOM_HIGHBITDEPTH
-                            ref, r_width, r_height, r_stride, dst, 0, 0,
-                            d_width, d_height, d_stride, 0, 0, 16, 16);
-      if (step_error < best_error) {
-        step >>= 1;
-        best_error = step_error;
-        best_param = *param;
-        curr_param = best_param;
-        continue;
-      }
-
-      // no improvement found-> means we're either already at a minimum or
-      // step is too wide
-      step >>= 1;
-    }
-
-    *param = best_param;
-  }
-}
-
-static void convert_to_params(const double *params, TransformationType type,
-                              int32_t *model) {
-  int i, diag_value;
+static void convert_to_params(const double *params, int32_t *model) {
+  int i;
   int alpha_present = 0;
-  int n_params = n_trans_model_params[type];
   model[0] = (int32_t)floor(params[0] * (1 << GM_TRANS_PREC_BITS) + 0.5);
   model[1] = (int32_t)floor(params[1] * (1 << GM_TRANS_PREC_BITS) + 0.5);
   model[0] = (int32_t)clamp(model[0], GM_TRANS_MIN, GM_TRANS_MAX) *
@@ -4729,13 +4691,18 @@ static void convert_to_params(const double *params, TransformationType type,
   model[1] = (int32_t)clamp(model[1], GM_TRANS_MIN, GM_TRANS_MAX) *
              GM_TRANS_DECODE_FACTOR;
 
-  for (i = 2; i < n_params; ++i) {
-    diag_value = ((i & 1) ? (1 << GM_ALPHA_PREC_BITS) : 0);
+  for (i = 2; i < 6; ++i) {
+    const int diag_value = ((i == 2 || i == 5) ? (1 << GM_ALPHA_PREC_BITS) : 0);
     model[i] = (int32_t)floor(params[i] * (1 << GM_ALPHA_PREC_BITS) + 0.5);
     model[i] =
-        (int32_t)(clamp(model[i] - diag_value, GM_ALPHA_MIN, GM_ALPHA_MAX) +
-                  diag_value) *
-        GM_ALPHA_DECODE_FACTOR;
+        (int32_t)clamp(model[i] - diag_value, GM_ALPHA_MIN, GM_ALPHA_MAX);
+    alpha_present |= (model[i] != 0);
+    model[i] = (model[i] + diag_value) * GM_ALPHA_DECODE_FACTOR;
+  }
+  for (; i < 8; ++i) {
+    model[i] = (int32_t)floor(params[i] * (1 << GM_ROW3HOMO_PREC_BITS) + 0.5);
+    model[i] = (int32_t)clamp(model[i], GM_ROW3HOMO_MIN, GM_ROW3HOMO_MAX) *
+               GM_ROW3HOMO_DECODE_FACTOR;
     alpha_present |= (model[i] != 0);
   }
 
@@ -4748,13 +4715,149 @@ static void convert_to_params(const double *params, TransformationType type,
 }
 
 static void convert_model_to_params(const double *params,
-                                    TransformationType type,
-                                    Global_Motion_Params *model) {
-  // TODO(sarahparker) implement for homography
-  if (type > HOMOGRAPHY)
-    convert_to_params(params, type, model->motion_params.wmmat);
-  model->gmtype = get_gmtype(model);
-  model->motion_params.wmtype = gm_to_trans_type(model->gmtype);
+                                    WarpedMotionParams *model) {
+  convert_to_params(params, model->wmmat);
+  model->wmtype = get_gmtype(model);
+}
+
+// Adds some offset to a global motion parameter and handles
+// all of the necessary precision shifts, clamping, and
+// zero-centering.
+static int32_t add_param_offset(int param_index, int32_t param_value,
+                                int32_t offset) {
+  const int scale_vals[3] = { GM_TRANS_PREC_DIFF, GM_ALPHA_PREC_DIFF,
+                              GM_ROW3HOMO_PREC_DIFF };
+  const int clamp_vals[3] = { GM_TRANS_MAX, GM_ALPHA_MAX, GM_ROW3HOMO_MAX };
+  // type of param: 0 - translation, 1 - affine, 2 - homography
+  const int param_type = (param_index < 2 ? 0 : (param_index < 6 ? 1 : 2));
+  const int is_one_centered = (param_index == 2 || param_index == 5);
+
+  // Make parameter zero-centered and offset the shift that was done to make
+  // it compatible with the warped model
+  param_value = (param_value - (is_one_centered << WARPEDMODEL_PREC_BITS)) >>
+                scale_vals[param_type];
+  // Add desired offset to the rescaled/zero-centered parameter
+  param_value += offset;
+  // Clamp the parameter so it does not overflow the number of bits allotted
+  // to it in the bitstream
+  param_value = (int32_t)clamp(param_value, -clamp_vals[param_type],
+                               clamp_vals[param_type]);
+  // Rescale the parameter to WARPEDMODEL_PRECISION_BITS so it is compatible
+  // with the warped motion library
+  param_value *= (1 << scale_vals[param_type]);
+
+  // Undo the zero-centering step if necessary
+  return param_value + (is_one_centered << WARPEDMODEL_PREC_BITS);
+}
+
+static void force_wmtype(WarpedMotionParams *wm, TransformationType wmtype) {
+  switch (wmtype) {
+    case IDENTITY: wm->wmmat[0] = 0; wm->wmmat[1] = 0;
+    case TRANSLATION:
+      wm->wmmat[2] = 1 << WARPEDMODEL_PREC_BITS;
+      wm->wmmat[3] = 0;
+    case ROTZOOM: wm->wmmat[4] = -wm->wmmat[3]; wm->wmmat[5] = wm->wmmat[2];
+    case AFFINE: wm->wmmat[6] = wm->wmmat[7] = 0;
+    case HOMOGRAPHY: break;
+    default: assert(0);
+  }
+  wm->wmtype = wmtype;
+}
+
+static double refine_integerized_param(WarpedMotionParams *wm,
+                                       TransformationType wmtype,
+#if CONFIG_AOM_HIGHBITDEPTH
+                                       int use_hbd, int bd,
+#endif  // CONFIG_AOM_HIGHBITDEPTH
+                                       uint8_t *ref, int r_width, int r_height,
+                                       int r_stride, uint8_t *dst, int d_width,
+                                       int d_height, int d_stride,
+                                       int n_refinements) {
+  const int border = ERRORADV_BORDER;
+  int i = 0, p;
+  int n_params = n_trans_model_params[wmtype];
+  int32_t *param_mat = wm->wmmat;
+  double step_error;
+  int32_t step;
+  int32_t *param;
+  int32_t curr_param;
+  int32_t best_param;
+  double best_error;
+
+  force_wmtype(wm, wmtype);
+  best_error = av1_warp_erroradv(wm,
+#if CONFIG_AOM_HIGHBITDEPTH
+                                 use_hbd, bd,
+#endif  // CONFIG_AOM_HIGHBITDEPTH
+                                 ref, r_width, r_height, r_stride,
+                                 dst + border * d_stride + border, border,
+                                 border, d_width - 2 * border,
+                                 d_height - 2 * border, d_stride, 0, 0, 16, 16);
+  step = 1 << (n_refinements + 1);
+  for (i = 0; i < n_refinements; i++, step >>= 1) {
+    for (p = 0; p < n_params; ++p) {
+      int step_dir = 0;
+      param = param_mat + p;
+      curr_param = *param;
+      best_param = curr_param;
+      // look to the left
+      *param = add_param_offset(p, curr_param, -step);
+      step_error = av1_warp_erroradv(
+          wm,
+#if CONFIG_AOM_HIGHBITDEPTH
+          use_hbd, bd,
+#endif  // CONFIG_AOM_HIGHBITDEPTH
+          ref, r_width, r_height, r_stride, dst + border * d_stride + border,
+          border, border, d_width - 2 * border, d_height - 2 * border, d_stride,
+          0, 0, 16, 16);
+      if (step_error < best_error) {
+        best_error = step_error;
+        best_param = *param;
+        step_dir = -1;
+      }
+
+      // look to the right
+      *param = add_param_offset(p, curr_param, step);
+      step_error = av1_warp_erroradv(
+          wm,
+#if CONFIG_AOM_HIGHBITDEPTH
+          use_hbd, bd,
+#endif  // CONFIG_AOM_HIGHBITDEPTH
+          ref, r_width, r_height, r_stride, dst + border * d_stride + border,
+          border, border, d_width - 2 * border, d_height - 2 * border, d_stride,
+          0, 0, 16, 16);
+      if (step_error < best_error) {
+        best_error = step_error;
+        best_param = *param;
+        step_dir = 1;
+      }
+      *param = best_param;
+
+      // look to the direction chosen above repeatedly until error increases
+      // for the biggest step size
+      while (step_dir) {
+        *param = add_param_offset(p, best_param, step * step_dir);
+        step_error = av1_warp_erroradv(
+            wm,
+#if CONFIG_AOM_HIGHBITDEPTH
+            use_hbd, bd,
+#endif  // CONFIG_AOM_HIGHBITDEPTH
+            ref, r_width, r_height, r_stride, dst + border * d_stride + border,
+            border, border, d_width - 2 * border, d_height - 2 * border,
+            d_stride, 0, 0, 16, 16);
+        if (step_error < best_error) {
+          best_error = step_error;
+          best_param = *param;
+        } else {
+          *param = best_param;
+          step_dir = 0;
+        }
+      }
+    }
+  }
+  force_wmtype(wm, wmtype);
+  wm->wmtype = get_gmtype(wm);
+  return best_error;
 }
 #endif  // CONFIG_GLOBAL_MOTION
 
@@ -4768,7 +4871,7 @@ static void encode_frame_internal(AV1_COMP *cpi) {
 
   x->min_partition_size = AOMMIN(x->min_partition_size, cm->sb_size);
   x->max_partition_size = AOMMIN(x->max_partition_size, cm->sb_size);
-#if CONFIG_SIMP_MV_PRED
+#if CONFIG_REF_MV
   cm->setup_mi(cm);
 #endif
 
@@ -4780,47 +4883,43 @@ static void encode_frame_internal(AV1_COMP *cpi) {
   av1_zero(rdc->comp_pred_diff);
 
 #if CONFIG_GLOBAL_MOTION
-  aom_clear_system_state();
   av1_zero(cpi->global_motion_used);
-  if (cpi->common.frame_type == INTER_FRAME && cpi->Source) {
+  if (cpi->common.frame_type == INTER_FRAME && cpi->Source &&
+      !cpi->global_motion_search_done) {
     YV12_BUFFER_CONFIG *ref_buf;
     int frame;
     double erroradvantage = 0;
-    double params[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    double params[8] = { 0, 0, 1, 0, 0, 1, 0, 0 };
     for (frame = LAST_FRAME; frame <= ALTREF_FRAME; ++frame) {
       ref_buf = get_ref_frame_buffer(cpi, frame);
       if (ref_buf) {
-        if (compute_global_motion_feature_based(GLOBAL_MOTION_MODEL,
-                                                cpi->Source, ref_buf, params)) {
-          convert_model_to_params(params, GLOBAL_MOTION_MODEL,
-                                  &cm->global_motion[frame]);
-          if (get_gmtype(&cm->global_motion[frame]) > GLOBAL_ZERO) {
-            refine_integerized_param(
-                &cm->global_motion[frame].motion_params,
+        aom_clear_system_state();
+        if (compute_global_motion_feature_based(GLOBAL_TRANS_TYPES - 1,
+                                                cpi->Source, ref_buf,
+#if CONFIG_AOM_HIGHBITDEPTH
+                                                cpi->common.bit_depth,
+#endif  // CONFIG_AOM_HIGHBITDEPTH
+                                                params)) {
+          convert_model_to_params(params, &cm->global_motion[frame]);
+          if (cm->global_motion[frame].wmtype != IDENTITY) {
+            erroradvantage = refine_integerized_param(
+                &cm->global_motion[frame], cm->global_motion[frame].wmtype,
 #if CONFIG_AOM_HIGHBITDEPTH
                 xd->cur_buf->flags & YV12_FLAG_HIGHBITDEPTH, xd->bd,
 #endif  // CONFIG_AOM_HIGHBITDEPTH
                 ref_buf->y_buffer, ref_buf->y_width, ref_buf->y_height,
                 ref_buf->y_stride, cpi->Source->y_buffer, cpi->Source->y_width,
                 cpi->Source->y_height, cpi->Source->y_stride, 3);
-            // compute the advantage of using gm parameters over 0 motion
-            erroradvantage = av1_warp_erroradv(
-                &cm->global_motion[frame].motion_params,
-#if CONFIG_AOM_HIGHBITDEPTH
-                xd->cur_buf->flags & YV12_FLAG_HIGHBITDEPTH, xd->bd,
-#endif  // CONFIG_AOM_HIGHBITDEPTH
-                ref_buf->y_buffer, ref_buf->y_width, ref_buf->y_height,
-                ref_buf->y_stride, cpi->Source->y_buffer, 0, 0,
-                cpi->Source->y_width, cpi->Source->y_height,
-                cpi->Source->y_stride, 0, 0, 16, 16);
-            if (erroradvantage > GLOBAL_MOTION_ADVANTAGE_THRESH)
-              // Not enough advantage in using a global model. Make 0.
-              memset(&cm->global_motion[frame], 0,
-                     sizeof(cm->global_motion[frame]));
+            if (erroradvantage >
+                gm_advantage_thresh[cm->global_motion[frame].wmtype]) {
+              set_default_gmparams(&cm->global_motion[frame]);
+            }
           }
         }
+        aom_clear_system_state();
       }
     }
+    cpi->global_motion_search_done = 1;
   }
 #endif  // CONFIG_GLOBAL_MOTION
 
@@ -5010,9 +5109,97 @@ void av1_encode_frame(AV1_COMP *cpi) {
 
 #if CONFIG_VAR_TX
     if (cm->tx_mode == TX_MODE_SELECT && cpi->td.mb.txb_split_count == 0)
-      cm->tx_mode = ALLOW_32X32;
+      cm->tx_mode = ALLOW_32X32 + CONFIG_TX64X64;
 #else
     if (cm->tx_mode == TX_MODE_SELECT) {
+#if CONFIG_TX64X64
+      int count4x4 = 0;
+      int count8x8_8x8p = 0, count8x8_lp = 0;
+      int count16x16_16x16p = 0, count16x16_lp = 0;
+      int count32x32_32x32p = 0, count32x32_lp = 0;
+      int count64x64_64x64p = 0;
+      for (i = 0; i < TX_SIZE_CONTEXTS; ++i) {
+        // counts->tx_size[max_depth][context_idx][this_depth_level]
+        count4x4 += counts->tx_size[0][i][0];
+        count4x4 += counts->tx_size[1][i][0];
+        count4x4 += counts->tx_size[2][i][0];
+        count4x4 += counts->tx_size[3][i][0];
+
+        count8x8_8x8p += counts->tx_size[0][i][1];
+        count8x8_lp += counts->tx_size[1][i][1];
+        count8x8_lp += counts->tx_size[2][i][1];
+        count8x8_lp += counts->tx_size[3][i][1];
+
+        count16x16_16x16p += counts->tx_size[1][i][2];
+        count16x16_lp += counts->tx_size[2][i][2];
+        count16x16_lp += counts->tx_size[3][i][2];
+
+        count32x32_32x32p += counts->tx_size[2][i][3];
+        count32x32_lp += counts->tx_size[3][i][3];
+
+        count64x64_64x64p += counts->tx_size[3][i][4];
+      }
+#if CONFIG_EXT_TX && CONFIG_RECT_TX
+      count4x4 += counts->tx_size_implied[0][TX_4X4];
+      count4x4 += counts->tx_size_implied[1][TX_4X4];
+      count4x4 += counts->tx_size_implied[2][TX_4X4];
+      count4x4 += counts->tx_size_implied[3][TX_4X4];
+      count8x8_8x8p += counts->tx_size_implied[1][TX_8X8];
+      count8x8_lp += counts->tx_size_implied[2][TX_8X8];
+      count8x8_lp += counts->tx_size_implied[3][TX_8X8];
+      count8x8_lp += counts->tx_size_implied[4][TX_8X8];
+      count16x16_16x16p += counts->tx_size_implied[2][TX_16X16];
+      count16x16_lp += counts->tx_size_implied[3][TX_16X16];
+      count16x16_lp += counts->tx_size_implied[4][TX_16X16];
+      count32x32_32x32p += counts->tx_size_implied[3][TX_32X32];
+      count32x32_lp += counts->tx_size_implied[4][TX_32X32];
+      count64x64_64x64p += counts->tx_size_implied[4][TX_64X64];
+#endif  // CONFIG_EXT_TX && CONFIG_RECT_TX
+      if (count4x4 == 0 && count16x16_lp == 0 && count16x16_16x16p == 0 &&
+          count32x32_lp == 0 && count32x32_32x32p == 0 &&
+#if CONFIG_SUPERTX
+          cm->counts.supertx_size[TX_16X16] == 0 &&
+          cm->counts.supertx_size[TX_32X32] == 0 &&
+          cm->counts.supertx_size[TX_64X64] == 0 &&
+#endif
+          count64x64_64x64p == 0) {
+        cm->tx_mode = ALLOW_8X8;
+        reset_skip_tx_size(cm, TX_8X8);
+      } else if (count8x8_8x8p == 0 && count8x8_lp == 0 &&
+                 count16x16_16x16p == 0 && count16x16_lp == 0 &&
+                 count32x32_32x32p == 0 && count32x32_lp == 0 &&
+#if CONFIG_SUPERTX
+                 cm->counts.supertx_size[TX_8X8] == 0 &&
+                 cm->counts.supertx_size[TX_16X16] == 0 &&
+                 cm->counts.supertx_size[TX_32X32] == 0 &&
+                 cm->counts.supertx_size[TX_64X64] == 0 &&
+#endif
+                 count64x64_64x64p == 0) {
+        cm->tx_mode = ONLY_4X4;
+        reset_skip_tx_size(cm, TX_4X4);
+      } else if (count4x4 == 0 && count8x8_lp == 0 && count16x16_lp == 0 &&
+                 count32x32_lp == 0) {
+        cm->tx_mode = ALLOW_64X64;
+      } else if (count4x4 == 0 && count8x8_lp == 0 && count16x16_lp == 0 &&
+#if CONFIG_SUPERTX
+                 cm->counts.supertx_size[TX_64X64] == 0 &&
+#endif
+                 count64x64_64x64p == 0) {
+        cm->tx_mode = ALLOW_32X32;
+        reset_skip_tx_size(cm, TX_32X32);
+      } else if (count4x4 == 0 && count8x8_lp == 0 && count32x32_lp == 0 &&
+                 count32x32_32x32p == 0 &&
+#if CONFIG_SUPERTX
+                 cm->counts.supertx_size[TX_32X32] == 0 &&
+                 cm->counts.supertx_size[TX_64X64] == 0 &&
+#endif
+                 count64x64_64x64p == 0) {
+        cm->tx_mode = ALLOW_16X16;
+        reset_skip_tx_size(cm, TX_16X16);
+      }
+
+#else  // CONFIG_TX64X64
+
       int count4x4 = 0;
       int count8x8_lp = 0, count8x8_8x8p = 0;
       int count16x16_16x16p = 0, count16x16_lp = 0;
@@ -5023,9 +5210,9 @@ void av1_encode_frame(AV1_COMP *cpi) {
         count4x4 += counts->tx_size[1][i][0];
         count4x4 += counts->tx_size[2][i][0];
 
+        count8x8_8x8p += counts->tx_size[0][i][1];
         count8x8_lp += counts->tx_size[1][i][1];
         count8x8_lp += counts->tx_size[2][i][1];
-        count8x8_8x8p += counts->tx_size[0][i][1];
 
         count16x16_16x16p += counts->tx_size[1][i][2];
         count16x16_lp += counts->tx_size[2][i][2];
@@ -5036,9 +5223,9 @@ void av1_encode_frame(AV1_COMP *cpi) {
       count4x4 += counts->tx_size_implied[1][TX_4X4];
       count4x4 += counts->tx_size_implied[2][TX_4X4];
       count4x4 += counts->tx_size_implied[3][TX_4X4];
+      count8x8_8x8p += counts->tx_size_implied[1][TX_8X8];
       count8x8_lp += counts->tx_size_implied[2][TX_8X8];
       count8x8_lp += counts->tx_size_implied[3][TX_8X8];
-      count8x8_8x8p += counts->tx_size_implied[1][TX_8X8];
       count16x16_lp += counts->tx_size_implied[3][TX_16X16];
       count16x16_16x16p += counts->tx_size_implied[2][TX_16X16];
       count32x32 += counts->tx_size_implied[3][TX_32X32];
@@ -5071,6 +5258,7 @@ void av1_encode_frame(AV1_COMP *cpi) {
         cm->tx_mode = ALLOW_16X16;
         reset_skip_tx_size(cm, TX_16X16);
       }
+#endif  // CONFIG_TX64X64
     }
 #endif
   } else {
@@ -5166,7 +5354,7 @@ static void tx_partition_count_update(const AV1_COMMON *const cm, MACROBLOCK *x,
   MACROBLOCKD *xd = &x->e_mbd;
   const int mi_width = num_4x4_blocks_wide_lookup[plane_bsize];
   const int mi_height = num_4x4_blocks_high_lookup[plane_bsize];
-  TX_SIZE max_tx_size = max_txsize_lookup[plane_bsize];
+  TX_SIZE max_tx_size = max_txsize_rect_lookup[plane_bsize];
   const int bh = tx_size_high_unit[max_tx_size];
   const int bw = tx_size_wide_unit[max_tx_size];
   int idx, idy;
@@ -5224,7 +5412,7 @@ static void tx_partition_set_contexts(const AV1_COMMON *const cm,
                                       int mi_row, int mi_col) {
   const int mi_width = num_4x4_blocks_wide_lookup[plane_bsize];
   const int mi_height = num_4x4_blocks_high_lookup[plane_bsize];
-  TX_SIZE max_tx_size = max_txsize_lookup[plane_bsize];
+  TX_SIZE max_tx_size = max_txsize_rect_lookup[plane_bsize];
   const int bh = tx_size_high_unit[max_tx_size];
   const int bw = tx_size_wide_unit[max_tx_size];
   int idx, idy;
@@ -5337,12 +5525,39 @@ static void encode_superblock(const AV1_COMP *const cpi, ThreadData *td,
       av1_setup_pre_planes(xd, ref, cfg, mi_row, mi_col,
                            &xd->block_refs[ref]->sf);
     }
-    if (!(cpi->sf.reuse_inter_pred_sby && ctx->pred_pixel_ready) || seg_skip)
-      av1_build_inter_predictors_sby(xd, mi_row, mi_col,
-                                     AOMMAX(bsize, BLOCK_8X8));
+#if CONFIG_WARPED_MOTION
+    if (mbmi->motion_mode == WARPED_CAUSAL) {
+      int i;
+#if CONFIG_AOM_HIGHBITDEPTH
+      int use_hbd = xd->cur_buf->flags & YV12_FLAG_HIGHBITDEPTH;
+#endif  // CONFIG_AOM_HIGHBITDEPTH
 
-    av1_build_inter_predictors_sbuv(xd, mi_row, mi_col,
-                                    AOMMAX(bsize, BLOCK_8X8));
+      for (i = 0; i < 3; ++i) {
+        const struct macroblockd_plane *pd = &xd->plane[i];
+
+        av1_warp_plane(&mbmi->wm_params[0],
+#if CONFIG_AOM_HIGHBITDEPTH
+                       xd->cur_buf->flags & YV12_FLAG_HIGHBITDEPTH, xd->bd,
+#endif  // CONFIG_AOM_HIGHBITDEPTH
+                       pd->pre[0].buf0, pd->pre[0].width, pd->pre[0].height,
+                       pd->pre[0].stride, pd->dst.buf,
+                       ((mi_col * MI_SIZE) >> pd->subsampling_x),
+                       ((mi_row * MI_SIZE) >> pd->subsampling_y),
+                       xd->n8_w * (8 >> pd->subsampling_x),
+                       xd->n8_h * (8 >> pd->subsampling_y), pd->dst.stride,
+                       pd->subsampling_x, pd->subsampling_y, 16, 16, 0);
+      }
+    } else {
+#endif  // CONFIG_WARPED_MOTION
+      if (!(cpi->sf.reuse_inter_pred_sby && ctx->pred_pixel_ready) || seg_skip)
+        av1_build_inter_predictors_sby(xd, mi_row, mi_col, NULL,
+                                       AOMMAX(bsize, BLOCK_8X8));
+
+      av1_build_inter_predictors_sbuv(xd, mi_row, mi_col, NULL,
+                                      AOMMAX(bsize, BLOCK_8X8));
+#if CONFIG_WARPED_MOTION
+    }
+#endif  // CONFIG_WARPED_MOTION
 
 #if CONFIG_MOTION_VAR
     if (mbmi->motion_mode == OBMC_CAUSAL) {
@@ -5353,13 +5568,8 @@ static void encode_superblock(const AV1_COMP *const cpi, ThreadData *td,
     av1_encode_sb((AV1_COMMON *)cm, x, AOMMAX(bsize, BLOCK_8X8));
 #if CONFIG_VAR_TX
     if (mbmi->skip) mbmi->min_tx_size = get_min_tx_size(mbmi->tx_size);
-#if CONFIG_EXT_TX && CONFIG_RECT_TX
-    if (is_rect_tx(mbmi->tx_size))
-      av1_tokenize_sb(cpi, td, t, dry_run, AOMMAX(bsize, BLOCK_8X8), rate);
-    else
-#endif
-      av1_tokenize_sb_vartx(cpi, td, t, dry_run, mi_row, mi_col,
-                            AOMMAX(bsize, BLOCK_8X8), rate);
+    av1_tokenize_sb_vartx(cpi, td, t, dry_run, mi_row, mi_col,
+                          AOMMAX(bsize, BLOCK_8X8), rate);
 #else
     av1_tokenize_sb(cpi, td, t, dry_run, AOMMAX(bsize, BLOCK_8X8), rate);
 #endif
@@ -5383,23 +5593,13 @@ static void encode_superblock(const AV1_COMP *const cpi, ThreadData *td,
       assert(IMPLIES(is_rect_tx(tx_size), is_rect_tx_allowed(xd, mbmi)));
 #endif  // CONFIG_EXT_TX && CONFIG_RECT_TX
 #if CONFIG_VAR_TX
-#if CONFIG_EXT_TX && CONFIG_RECT_TX
-      if (is_rect_tx_allowed(xd, mbmi)) {
-        td->counts->rect_tx[tx_size_cat][is_rect_tx(tx_size)]++;
+      if (is_inter) {
+        tx_partition_count_update(cm, x, bsize, mi_row, mi_col, td->counts);
+      } else {
+        ++td->counts->tx_size[tx_size_cat][tx_size_ctx][depth];
+        if (tx_size != max_txsize_lookup[bsize]) ++x->txb_split_count;
       }
-      if (!is_rect_tx_allowed(xd, mbmi) || !is_rect_tx(tx_size)) {
-#endif  // CONFIG_EXT_TX && CONFIG_RECT_TX
-        if (is_inter) {
-          tx_partition_count_update(cm, x, bsize, mi_row, mi_col, td->counts);
-        } else {
-          ++td->counts->tx_size[tx_size_cat][tx_size_ctx][depth];
-          if (tx_size != max_txsize_lookup[bsize]) ++x->txb_split_count;
-        }
-#if CONFIG_EXT_TX && CONFIG_RECT_TX
-      }
-#endif
-#endif
-#if !CONFIG_VAR_TX
+#else
       ++td->counts->tx_size[tx_size_cat][tx_size_ctx][depth];
 #endif
     } else {
@@ -5465,36 +5665,18 @@ static void encode_superblock(const AV1_COMP *const cpi, ThreadData *td,
 #if CONFIG_VAR_TX
   if (cm->tx_mode == TX_MODE_SELECT && mbmi->sb_type >= BLOCK_8X8 && is_inter &&
       !(mbmi->skip || seg_skip)) {
-#if CONFIG_EXT_TX && CONFIG_RECT_TX
-    if (is_rect_tx(mbmi->tx_size)) {
-      set_txfm_ctxs(mbmi->tx_size, xd->n8_w, xd->n8_h, xd);
-    } else {
-      if (dry_run) tx_partition_set_contexts(cm, xd, bsize, mi_row, mi_col);
-    }
-#else
     if (dry_run) tx_partition_set_contexts(cm, xd, bsize, mi_row, mi_col);
-#endif  // CONFIG_EXT_TX && CONFIG_RECT_TX
   } else {
     TX_SIZE tx_size = mbmi->tx_size;
     // The new intra coding scheme requires no change of transform size
     if (is_inter)
-#if CONFIG_EXT_TX && CONFIG_RECT_TX
-    {
-      tx_size = AOMMIN(tx_mode_to_biggest_tx_size[cm->tx_mode],
-                       max_txsize_lookup[bsize]);
-      if (txsize_sqr_map[max_txsize_rect_lookup[bsize]] <= tx_size)
-        tx_size = max_txsize_rect_lookup[bsize];
-      if (xd->lossless[mbmi->segment_id]) tx_size = TX_4X4;
-    }
-#else
       tx_size = tx_size_from_tx_mode(bsize, cm->tx_mode, is_inter);
-#endif
     else
       tx_size = (bsize >= BLOCK_8X8) ? tx_size : TX_4X4;
     mbmi->tx_size = tx_size;
     set_txfm_ctxs(tx_size, xd->n8_w, xd->n8_h, (mbmi->skip || seg_skip), xd);
   }
-#endif
+#endif  // CONFIG_VAR_TX
 }
 
 #if CONFIG_SUPERTX

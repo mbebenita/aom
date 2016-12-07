@@ -193,6 +193,10 @@ typedef struct AV1EncoderConfig {
   int qm_minlevel;
   int qm_maxlevel;
 #endif
+#if CONFIG_TILE_GROUPS
+  unsigned int num_tile_groups;
+  unsigned int mtu;
+#endif
 
   // Internal frame size scaling.
   RESIZE_TYPE resize_mode;
@@ -531,6 +535,9 @@ typedef struct AV1_COMP {
 #endif  // CONFIG_EXT_INTER
 #if CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
   int motion_mode_cost[BLOCK_SIZES][MOTION_MODES];
+#if CONFIG_MOTION_VAR && CONFIG_WARPED_MOTION
+  int motion_mode_cost1[BLOCK_SIZES][2];
+#endif  // CONFIG_MOTION_VAR && CONFIG_WARPED_MOTION
 #endif  // CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
   int intra_uv_mode_cost[INTRA_MODES][INTRA_MODES];
   int y_mode_costs[INTRA_MODES][INTRA_MODES][INTRA_MODES];
@@ -621,6 +628,7 @@ typedef struct AV1_COMP {
 #endif  // CONFIG_EXT_REFS
 #if CONFIG_GLOBAL_MOTION
   int global_motion_used[TOTAL_REFS_PER_FRAME];
+  int global_motion_search_done;
 #endif
 #if CONFIG_REFERENCE_BUFFER
   SequenceHeader seq_params;

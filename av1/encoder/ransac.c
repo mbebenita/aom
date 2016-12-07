@@ -1,13 +1,13 @@
 /*
- *   (c) 2010 The WebM project authors. All Rights Reserved.
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved
  *
- *  Use of this source code is governed by a BSD-style license
- *  that can be found in the LICENSE file in the root of the source
- *  tree. An additional intellectual property rights grant can be found
- *  in the file PATENTS.  All contributing project authors may
- *  be found in the AUTHORS file in the root of the source tree.
+ * This source code is subject to the terms of the BSD 2 Clause License and
+ * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
+ * was not distributed with this source code in the LICENSE file, you can
+ * obtain it at www.aomedia.org/license/software. If the Alliance for Open
+ * Media Patent License 1.0 was not distributed with this source code in the
+ * PATENTS file, you can obtain it at www.aomedia.org/license/patent.
  */
-
 #include <memory.h>
 #include <math.h>
 #include <time.h>
@@ -18,7 +18,6 @@
 #include "av1/encoder/ransac.h"
 
 #define MAX_MINPTS 4
-
 #define MAX_DEGENERATE_ITER 10
 #define MINPTS_MULTIPLIER 5
 
@@ -41,8 +40,8 @@ static void project_points_double_translation(double *mat, double *points,
   int i;
   for (i = 0; i < n; ++i) {
     const double x = *(points++), y = *(points++);
-    *(proj++) = x + mat[1];
-    *(proj++) = y + mat[0];
+    *(proj++) = x + mat[0];
+    *(proj++) = y + mat[1];
     points += stride_points - 2;
     proj += stride_proj - 2;
   }
@@ -55,8 +54,8 @@ static void project_points_double_rotzoom(double *mat, double *points,
   int i;
   for (i = 0; i < n; ++i) {
     const double x = *(points++), y = *(points++);
-    *(proj++) = mat[3] * x + mat[2] * y + mat[1];
-    *(proj++) = -mat[2] * x + mat[3] * y + mat[0];
+    *(proj++) = mat[2] * x + mat[3] * y + mat[0];
+    *(proj++) = -mat[3] * x + mat[2] * y + mat[1];
     points += stride_points - 2;
     proj += stride_proj - 2;
   }
@@ -69,8 +68,8 @@ static void project_points_double_affine(double *mat, double *points,
   int i;
   for (i = 0; i < n; ++i) {
     const double x = *(points++), y = *(points++);
-    *(proj++) = mat[3] * x + mat[2] * y + mat[1];
-    *(proj++) = mat[4] * x + mat[5] * y + mat[0];
+    *(proj++) = mat[2] * x + mat[3] * y + mat[0];
+    *(proj++) = mat[4] * x + mat[5] * y + mat[1];
     points += stride_points - 2;
     proj += stride_proj - 2;
   }
@@ -84,11 +83,11 @@ static void project_points_double_homography(double *mat, double *points,
   double x, y, Z, Z_inv;
   for (i = 0; i < n; ++i) {
     x = *(points++), y = *(points++);
-    Z_inv = mat[7] * x + mat[6] * y + 1;
-    assert(fabs(Z_inv) > 0.00001);
+    Z_inv = mat[6] * x + mat[7] * y + 1;
+    assert(fabs(Z_inv) > 0.000001);
     Z = 1. / Z_inv;
-    *(proj++) = (mat[1] * x + mat[0] * y + mat[3]) * Z;
-    *(proj++) = (mat[2] * x + mat[4] * y + mat[4]) * Z;
+    *(proj++) = (mat[2] * x + mat[3] * y + mat[0]) * Z;
+    *(proj++) = (mat[4] * x + mat[5] * y + mat[1]) * Z;
     points += stride_points - 2;
     proj += stride_proj - 2;
   }
@@ -118,19 +117,14 @@ static int get_rand_indices(int npoints, int minpts, int *indices,
 
 static int ransac(double *matched_points, int npoints, int *number_of_inliers,
                   int *best_inlier_mask, double *best_params, const int minpts,
-                  const int paramdim, IsDegenerateFunc is_degenerate,
-                  NormalizeFunc normalize, DenormalizeFunc denormalize,
+                  IsDegenerateFunc is_degenerate,
                   FindTransformationFunc find_transformation,
                   ProjectPointsDoubleFunc projectpoints) {
-  static const double INLIER_THRESHOLD_NORMALIZED = 0.1;
-  static const double INLIER_THRESHOLD_UNNORMALIZED = 1.0;
+  static const double inlier_threshold = 1.0;
   static const double PROBABILITY_REQUIRED = 0.9;
   static const double EPS = 1e-12;
   static const int MIN_TRIALS = 20;
 
-  const double inlier_threshold =
-      (normalize && denormalize ? INLIER_THRESHOLD_NORMALIZED
-                                : INLIER_THRESHOLD_UNNORMALIZED);
   int N = 10000, trial_count = 0;
   int i;
   int ret_val = 0;
@@ -154,7 +148,6 @@ static int ransac(double *matched_points, int npoints, int *number_of_inliers,
   int *inlier_mask;
 
   double *cnp1, *cnp2;
-  double T1[9], T2[9];
 
   *number_of_inliers = 0;
   if (npoints < minpts * MINPTS_MULTIPLIER || npoints == 0) {
@@ -187,11 +180,6 @@ static int ransac(double *matched_points, int npoints, int *number_of_inliers,
     *(cnp2++) = *(matched_points++);
   }
   matched_points -= 4 * npoints;
-
-  if (normalize && denormalize) {
-    normalize(corners1, npoints, T1);
-    normalize(corners2, npoints, T2);
-  }
 
   while (N > trial_count) {
     int num_inliers = 0;
@@ -251,7 +239,6 @@ static int ransac(double *matched_points, int npoints, int *number_of_inliers,
       int temp;
       double fracinliers, pNoOutliers, mean_distance, variance;
 
-      assert(num_inliers > 1);
       mean_distance = sum_distance / ((double)num_inliers);
       variance = sum_distance_squared / ((double)num_inliers - 1.0) -
                  mean_distance * mean_distance * ((double)num_inliers) /
@@ -260,7 +247,9 @@ static int ransac(double *matched_points, int npoints, int *number_of_inliers,
           (num_inliers == max_inliers && variance < best_variance)) {
         best_variance = variance;
         max_inliers = num_inliers;
-        memcpy(best_params, params, paramdim * sizeof(*best_params));
+        // Save parameters, excluding the implicit '1' in the bottom-right
+        // entry of the parameter matrix
+        memcpy(best_params, params, (MAX_PARAMDIM - 1) * sizeof(*best_params));
         memcpy(best_inlier_set1, inlier_set1,
                num_inliers * 2 * sizeof(*best_inlier_set1));
         memcpy(best_inlier_set2, inlier_set2,
@@ -273,7 +262,6 @@ static int ransac(double *matched_points, int npoints, int *number_of_inliers,
         pNoOutliers = 1 - pow(fracinliers, minpts);
         pNoOutliers = fmax(EPS, pNoOutliers);
         pNoOutliers = fmin(1 - EPS, pNoOutliers);
-        assert(fabs(1.0 - pNoOutliers) > 0.00001);
         temp = (int)(log(1.0 - PROBABILITY_REQUIRED) / log(pNoOutliers));
         if (temp > 0 && temp < N) {
           N = AOMMAX(temp, MIN_TRIALS);
@@ -284,9 +272,6 @@ static int ransac(double *matched_points, int npoints, int *number_of_inliers,
   }
   find_transformation(max_inliers, best_inlier_set1, best_inlier_set2,
                       best_params);
-  if (normalize && denormalize) {
-    denormalize(best_params, T1, T2);
-  }
   *number_of_inliers = max_inliers;
 finish_ransac:
   aom_free(best_inlier_set1);
@@ -324,46 +309,28 @@ int ransac_translation(double *matched_points, int npoints,
                        int *number_of_inliers, int *best_inlier_mask,
                        double *best_params) {
   return ransac(matched_points, npoints, number_of_inliers, best_inlier_mask,
-                best_params, 3, 2, is_degenerate_translation,
-                NULL,  // normalize_homography,
-                NULL,  // denormalize_rotzoom,
-                find_translation, project_points_double_translation);
+                best_params, 3, is_degenerate_translation, find_translation,
+                project_points_double_translation);
 }
 
 int ransac_rotzoom(double *matched_points, int npoints, int *number_of_inliers,
                    int *best_inlier_mask, double *best_params) {
   return ransac(matched_points, npoints, number_of_inliers, best_inlier_mask,
-                best_params, 3, 4, is_degenerate_affine,
-                NULL,  // normalize_homography,
-                NULL,  // denormalize_rotzoom,
-                find_rotzoom, project_points_double_rotzoom);
+                best_params, 3, is_degenerate_affine, find_rotzoom,
+                project_points_double_rotzoom);
 }
 
 int ransac_affine(double *matched_points, int npoints, int *number_of_inliers,
                   int *best_inlier_mask, double *best_params) {
   return ransac(matched_points, npoints, number_of_inliers, best_inlier_mask,
-                best_params, 3, 6, is_degenerate_affine,
-                NULL,  // normalize_homography,
-                NULL,  // denormalize_affine,
-                find_affine, project_points_double_affine);
+                best_params, 3, is_degenerate_affine, find_affine,
+                project_points_double_affine);
 }
 
 int ransac_homography(double *matched_points, int npoints,
                       int *number_of_inliers, int *best_inlier_mask,
                       double *best_params) {
-  const int result =
-      ransac(matched_points, npoints, number_of_inliers, best_inlier_mask,
-             best_params, 4, 8, is_degenerate_homography,
-             NULL,  // normalize_homography,
-             NULL,  // denormalize_homography,
-             find_homography, project_points_double_homography);
-  if (!result) {
-    // normalize so that H33 = 1
-    int i;
-    const double m = 1.0 / best_params[8];
-    assert(fabs(best_params[8]) > 0.00001);
-    for (i = 0; i < 8; ++i) best_params[i] *= m;
-    best_params[8] = 1.0;
-  }
-  return result;
+  return ransac(matched_points, npoints, number_of_inliers, best_inlier_mask,
+                best_params, 4, is_degenerate_homography, find_homography,
+                project_points_double_homography);
 }

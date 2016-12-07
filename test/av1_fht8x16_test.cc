@@ -1,13 +1,13 @@
 /*
- *  Copyright (c) 2016 The WebM project authors. All Rights Reserved.
+ * Copyright (c) 2016, Alliance for Open Media. All rights reserved
  *
- *  Use of this source code is governed by a BSD-style license
- *  that can be found in the LICENSE file in the root of the source
- *  tree. An additional intellectual property rights grant can be found
- *  in the file PATENTS.  All contributing project authors may
- *  be found in the AUTHORS file in the root of the source tree.
+ * This source code is subject to the terms of the BSD 2 Clause License and
+ * the Alliance for Open Media Patent License 1.0. If the BSD 2 Clause License
+ * was not distributed with this source code in the LICENSE file, you can
+ * obtain it at www.aomedia.org/license/software. If the Alliance for Open
+ * Media Patent License 1.0 was not distributed with this source code in the
+ * PATENTS file, you can obtain it at www.aomedia.org/license/patent.
  */
-
 #include "third_party/googletest/src/include/gtest/gtest.h"
 
 #include "./aom_dsp_rtcd.h"
@@ -69,12 +69,15 @@ class AV1Trans8x16HT : public libaom_test::TransformTestBase,
   IhtFunc inv_txfm_;
 };
 
+TEST_P(AV1Trans8x16HT, MemCheck) { RunMemCheck(); }
+TEST_P(AV1Trans8x16HT, AccuracyCheck) { RunAccuracyCheck(0); }
 TEST_P(AV1Trans8x16HT, CoeffCheck) { RunCoeffCheck(); }
 TEST_P(AV1Trans8x16HT, InvCoeffCheck) { RunInvCoeffCheck(); }
+TEST_P(AV1Trans8x16HT, InvAccuracyCheck) { RunInvAccuracyCheck(0); }
 
 using std::tr1::make_tuple;
 
-#if HAVE_SSE2
+#if HAVE_SSE2 && !CONFIG_EMULATE_HARDWARE
 const Ht8x16Param kArrayHt8x16Param_sse2[] = {
   make_tuple(&av1_fht8x16_sse2, &av1_iht8x16_128_add_sse2, 0, AOM_BITS_8, 128),
   make_tuple(&av1_fht8x16_sse2, &av1_iht8x16_128_add_sse2, 1, AOM_BITS_8, 128),
@@ -97,6 +100,6 @@ const Ht8x16Param kArrayHt8x16Param_sse2[] = {
 };
 INSTANTIATE_TEST_CASE_P(SSE2, AV1Trans8x16HT,
                         ::testing::ValuesIn(kArrayHt8x16Param_sse2));
-#endif  // HAVE_SSE2
+#endif  // HAVE_SSE2 && !CONFIG_EMULATE_HARDWARE
 
 }  // namespace

@@ -13,7 +13,56 @@ project(AOM C CXX)
 
 set(AOM_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 set(AOM_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+
+# TODO(tomfinegan): Host auto detect goes here when $AOM_TARGET is empty.
+set(AOM_TARGET "generic")
 include("${AOM_ROOT}/build/cmake/aom_configure.cmake")
+
+# TODO(tomfinegan): Use libwebm's cmake support directly.
+set(AOM_LIBWEBM_SRCS
+    "${AOM_ROOT}/third_party/libwebm/common/hdr_util.cc"
+    "${AOM_ROOT}/third_party/libwebm/common/hdr_util.h"
+    "${AOM_ROOT}/third_party/libwebm/common/webmids.h"
+    "${AOM_ROOT}/third_party/libwebm/mkvmuxer/mkvmuxer.cc"
+    "${AOM_ROOT}/third_party/libwebm/mkvmuxer/mkvmuxer.h"
+    "${AOM_ROOT}/third_party/libwebm/mkvmuxer/mkvmuxertypes.h"
+    "${AOM_ROOT}/third_party/libwebm/mkvmuxer/mkvmuxerutil.cc"
+    "${AOM_ROOT}/third_party/libwebm/mkvmuxer/mkvmuxerutil.h"
+    "${AOM_ROOT}/third_party/libwebm/mkvmuxer/mkvwriter.cc"
+    "${AOM_ROOT}/third_party/libwebm/mkvmuxer/mkvwriter.h"
+    "${AOM_ROOT}/third_party/libwebm/mkvparser/mkvparser.cc"
+    "${AOM_ROOT}/third_party/libwebm/mkvparser/mkvparser.h"
+    "${AOM_ROOT}/third_party/libwebm/mkvparser/mkvreader.cc"
+    "${AOM_ROOT}/third_party/libwebm/mkvparser/mkvreader.h")
+
+set(AOM_LIBYUV_SRCS
+    "${AOM_ROOT}/third_party/libyuv/include/libyuv/basic_types.h"
+    "${AOM_ROOT}/third_party/libyuv/include/libyuv/convert.h"
+    "${AOM_ROOT}/third_party/libyuv/include/libyuv/convert_argb.h"
+    "${AOM_ROOT}/third_party/libyuv/include/libyuv/convert_from.h"
+    "${AOM_ROOT}/third_party/libyuv/include/libyuv/cpu_id.h"
+    "${AOM_ROOT}/third_party/libyuv/include/libyuv/planar_functions.h"
+    "${AOM_ROOT}/third_party/libyuv/include/libyuv/rotate.h"
+    "${AOM_ROOT}/third_party/libyuv/include/libyuv/row.h"
+    "${AOM_ROOT}/third_party/libyuv/include/libyuv/scale.h"
+    "${AOM_ROOT}/third_party/libyuv/include/libyuv/scale_row.h"
+    "${AOM_ROOT}/third_party/libyuv/source/cpu_id.cc"
+    "${AOM_ROOT}/third_party/libyuv/source/planar_functions.cc"
+    "${AOM_ROOT}/third_party/libyuv/source/row_any.cc"
+    "${AOM_ROOT}/third_party/libyuv/source/row_common.cc"
+    "${AOM_ROOT}/third_party/libyuv/source/row_gcc.cc"
+    "${AOM_ROOT}/third_party/libyuv/source/row_mips.cc"
+    "${AOM_ROOT}/third_party/libyuv/source/row_neon.cc"
+    "${AOM_ROOT}/third_party/libyuv/source/row_neon64.cc"
+    "${AOM_ROOT}/third_party/libyuv/source/row_win.cc"
+    "${AOM_ROOT}/third_party/libyuv/source/scale.cc"
+    "${AOM_ROOT}/third_party/libyuv/source/scale_any.cc"
+    "${AOM_ROOT}/third_party/libyuv/source/scale_common.cc"
+    "${AOM_ROOT}/third_party/libyuv/source/scale_gcc.cc"
+    "${AOM_ROOT}/third_party/libyuv/source/scale_mips.cc"
+    "${AOM_ROOT}/third_party/libyuv/source/scale_neon.cc"
+    "${AOM_ROOT}/third_party/libyuv/source/scale_neon64.cc"
+    "${AOM_ROOT}/third_party/libyuv/source/scale_win.cc")
 
 set(AOM_SRCS
     "${AOM_CONFIG_DIR}/aom_config.c"
@@ -38,6 +87,7 @@ set(AOM_DSP_SRCS
     "${AOM_ROOT}/aom_dsp/aom_convolve.h"
     "${AOM_ROOT}/aom_dsp/aom_dsp_common.h"
     "${AOM_ROOT}/aom_dsp/aom_dsp_rtcd.c"
+    "${AOM_CONFIG_DIR}/aom_dsp_rtcd.h"
     "${AOM_ROOT}/aom_dsp/aom_filter.h"
     "${AOM_ROOT}/aom_dsp/aom_simd.c"
     "${AOM_ROOT}/aom_dsp/aom_simd.h"
@@ -101,6 +151,7 @@ set(AOM_MEM_SRCS
 set(AOM_SCALE_SRCS
     "${AOM_ROOT}/aom_scale/aom_scale.h"
     "${AOM_ROOT}/aom_scale/aom_scale_rtcd.c"
+    "${AOM_CONFIG_DIR}/aom_scale_rtcd.h"
     "${AOM_ROOT}/aom_scale/generic/aom_scale.c"
     "${AOM_ROOT}/aom_scale/generic/gen_scalers.c"
     "${AOM_ROOT}/aom_scale/generic/yv12config.c"
@@ -108,6 +159,8 @@ set(AOM_SCALE_SRCS
     "${AOM_ROOT}/aom_scale/yv12config.h")
 
 # TODO(tomfinegan): Extract aom_ports from aom_util if possible.
+# TODO(tomfinegan): aom_ports has some target specific source files.
+# aom_configure will need to set a var that gets picked up here.
 set(AOM_UTIL_SRCS
     "${AOM_ROOT}/aom_ports/aom_once.h"
     "${AOM_ROOT}/aom_ports/aom_timer.h"
@@ -135,6 +188,7 @@ set(AOM_AV1_COMMON_SRCS
     "${AOM_ROOT}/av1/common/av1_inv_txfm2d.c"
     "${AOM_ROOT}/av1/common/av1_inv_txfm2d_cfg.h"
     "${AOM_ROOT}/av1/common/av1_rtcd.c"
+    "${AOM_CONFIG_DIR}/av1_rtcd.h"
     "${AOM_ROOT}/av1/common/av1_txfm.h"
     "${AOM_ROOT}/av1/common/blockd.c"
     "${AOM_ROOT}/av1/common/blockd.h"
@@ -264,27 +318,153 @@ set(AOM_AV1_ENCODER_SRCS
     "${AOM_ROOT}/av1/encoder/variance_tree.c"
     "${AOM_ROOT}/av1/encoder/variance_tree.h")
 
-# Targets
-add_library(aom_dsp ${AOM_DSP_SRCS})
-include_directories(${AOM_ROOT} ${AOM_CONFIG_DIR})
-add_library(aom_mem ${AOM_MEM_SRCS})
-add_library(aom_scale ${AOM_SCALE_SRCS})
-include_directories(${AOM_ROOT} ${AOM_CONFIG_DIR})
-add_library(aom_util ${AOM_UTIL_SRCS})
-add_library(aom_av1_decoder ${AOM_AV1_DECODER_SRCS})
-add_library(aom_av1_encoder ${AOM_AV1_ENCODER_SRCS})
-add_library(aom ${AOM_SRCS})
-target_link_libraries(aom LINK_PUBLIC
-                      aom_dsp
-                      aom_mem
-                      aom_scale
-                      aom_util
-                      aom_av1_decoder
-                      aom_av1_encoder)
-add_executable(simple_decoder examples/simple_decoder.c)
-include_directories(${AOM_ROOT})
-target_link_libraries(simple_decoder LINK_PUBLIC aom)
-add_executable(simple_encoder examples/simple_encoder.c)
-include_directories(${AOM_ROOT})
-target_link_libraries(simple_encoder LINK_PUBLIC aom)
+set(AOM_COMMON_APP_UTIL_SOURCES
+    "${AOM_ROOT}/md5_utils.c"
+    "${AOM_ROOT}/md5_utils.h"
+    "${AOM_ROOT}/tools_common.c"
+    "${AOM_ROOT}/tools_common.h"
+    "${AOM_ROOT}/video_common.h")
 
+set(AOM_DECODER_APP_UTIL_SOURCES
+    "${AOM_ROOT}/ivfdec.c"
+    "${AOM_ROOT}/ivfdec.h"
+    "${AOM_ROOT}/video_reader.c"
+    "${AOM_ROOT}/video_reader.h")
+
+set(AOM_ENCODER_APP_UTIL_SOURCES
+    "${AOM_ROOT}/ivfenc.c"
+    "${AOM_ROOT}/ivfenc.h"
+    "${AOM_ROOT}/video_writer.c"
+    "${AOM_ROOT}/video_writer.h")
+
+# Targets
+# TODO(tomfinegan): Add support for enable/disable encoder/decoder.
+# TODO(tomfinegan): Add support for WEBM_IO from the old build system.
+add_library(aom_dsp OBJECT ${AOM_DSP_SRCS})
+include_directories(${AOM_ROOT} ${AOM_CONFIG_DIR})
+AomAddRtcdGenerationCommand(${AOM_ROOT}/aom_dsp/aom_dsp_rtcd_defs.pl
+                            ${AOM_CONFIG_DIR}/aom_dsp_rtcd.h
+                            ${AOM_CONFIG_DIR}/aom_dsp/aom_dsp_rtcd.c
+                            aom_dsp_rtcd)
+
+add_library(aom_mem OBJECT ${AOM_MEM_SRCS})
+
+add_library(aom_scale OBJECT ${AOM_SCALE_SRCS})
+include_directories(${AOM_ROOT} ${AOM_CONFIG_DIR})
+AomAddRtcdGenerationCommand(${AOM_ROOT}/aom_scale/aom_scale_rtcd.pl
+                            ${AOM_CONFIG_DIR}/aom_scale_rtcd.h
+                            ${AOM_CONFIG_DIR}/aom_scale/aom_scale_rtcd.c
+                            aom_scale_rtcd)
+
+add_library(aom_util OBJECT ${AOM_UTIL_SRCS})
+
+add_library(aom_av1_common OBJECT ${AOM_AV1_COMMON_SRCS})
+include_directories(${AOM_ROOT} ${AOM_CONFIG_DIR})
+AomAddRtcdGenerationCommand(${AOM_ROOT}/av1/common/av1_rtcd_defs.pl
+                            ${AOM_CONFIG_DIR}/av1_rtcd.h
+                            ${AOM_CONFIG_DIR}/av1/common/av1_rtcd.c
+                            aom_av1_rtcd)
+
+add_library(aom_av1_decoder OBJECT ${AOM_AV1_DECODER_SRCS})
+add_library(aom_av1_encoder OBJECT ${AOM_AV1_ENCODER_SRCS})
+add_library(aom
+            ${AOM_SRCS}
+            $<TARGET_OBJECTS:aom_dsp>
+            $<TARGET_OBJECTS:aom_mem>
+            $<TARGET_OBJECTS:aom_scale>
+            $<TARGET_OBJECTS:aom_util>
+            $<TARGET_OBJECTS:aom_av1_common>
+            $<TARGET_OBJECTS:aom_av1_decoder>
+            $<TARGET_OBJECTS:aom_av1_encoder>)
+
+add_library(aom_common_app_util OBJECT ${AOM_COMMON_APP_UTIL_SOURCES})
+add_library(aom_decoder_app_util OBJECT ${AOM_DECODER_APP_UTIL_SOURCES})
+add_library(aom_encoder_app_util OBJECT ${AOM_ENCODER_APP_UTIL_SOURCES})
+
+add_executable(aom_cx_set_ref
+               "${AOM_ROOT}/examples/aom_cx_set_ref.c"
+               $<TARGET_OBJECTS:aom_common_app_util>
+               $<TARGET_OBJECTS:aom_encoder_app_util>)
+include_directories(${AOM_ROOT})
+target_link_libraries(aom_cx_set_ref PUBLIC aom)
+
+add_executable(decode_to_md5
+               "${AOM_ROOT}/examples/decode_to_md5.c"
+               $<TARGET_OBJECTS:aom_common_app_util>
+               $<TARGET_OBJECTS:aom_decoder_app_util>)
+include_directories(${AOM_ROOT})
+target_link_libraries(decode_to_md5 PUBLIC aom)
+
+add_executable(decode_with_drops
+               "${AOM_ROOT}/examples/decode_with_drops.c"
+               $<TARGET_OBJECTS:aom_common_app_util>
+               $<TARGET_OBJECTS:aom_decoder_app_util>)
+include_directories(${AOM_ROOT})
+target_link_libraries(decode_with_drops PUBLIC aom)
+
+add_executable(lossless_encoder
+               "${AOM_ROOT}/examples/lossless_encoder.c"
+               $<TARGET_OBJECTS:aom_common_app_util>
+               $<TARGET_OBJECTS:aom_encoder_app_util>)
+include_directories(${AOM_ROOT})
+target_link_libraries(lossless_encoder PUBLIC aom)
+
+add_executable(set_maps
+               "${AOM_ROOT}/examples/set_maps.c"
+               $<TARGET_OBJECTS:aom_common_app_util>
+               $<TARGET_OBJECTS:aom_encoder_app_util>)
+include_directories(${AOM_ROOT})
+target_link_libraries(set_maps PUBLIC aom)
+
+add_executable(simple_decoder
+               "${AOM_ROOT}/examples/simple_decoder.c"
+               $<TARGET_OBJECTS:aom_common_app_util>
+               $<TARGET_OBJECTS:aom_decoder_app_util>)
+include_directories(${AOM_ROOT})
+target_link_libraries(simple_decoder PUBLIC aom)
+
+add_executable(simple_encoder
+               "${AOM_ROOT}/examples/simple_encoder.c"
+               $<TARGET_OBJECTS:aom_common_app_util>
+               $<TARGET_OBJECTS:aom_encoder_app_util>)
+include_directories(${AOM_ROOT})
+target_link_libraries(simple_encoder PUBLIC aom)
+
+add_executable(twopass_encoder
+               "${AOM_ROOT}/examples/twopass_encoder.c"
+               $<TARGET_OBJECTS:aom_common_app_util>
+               $<TARGET_OBJECTS:aom_encoder_app_util>)
+include_directories(${AOM_ROOT})
+target_link_libraries(twopass_encoder PUBLIC aom)
+
+if (CONFIG_LIBYUV)
+  add_library(yuv ${AOM_LIBYUV_SRCS})
+  target_compile_options(yuv PRIVATE -Wno-unused-parameter)
+  include_directories("${AOM_ROOT}/third_party/libyuv/include")
+
+  # Add to existing targets.
+  target_link_libraries(aom_cx_set_ref PUBLIC yuv)
+  target_link_libraries(decode_to_md5 PUBLIC yuv)
+  target_link_libraries(decode_with_drops PUBLIC yuv)
+  target_link_libraries(lossless_encoder PUBLIC yuv)
+  target_link_libraries(set_maps PUBLIC yuv)
+  target_link_libraries(simple_decoder PUBLIC yuv)
+  target_link_libraries(simple_encoder PUBLIC yuv)
+  target_link_libraries(twopass_encoder PUBLIC yuv)
+endif ()
+
+if (CONFIG_WEBM_IO)
+  add_library(webm ${AOM_LIBWEBM_SRCS})
+  include_directories("${AOM_ROOT}/third_party/libwebm")
+  target_compile_options(webm PRIVATE -Wno-shadow)
+
+  # Add to existing targets.
+  target_link_libraries(aom_cx_set_ref PUBLIC webm)
+  target_link_libraries(decode_to_md5 PUBLIC webm)
+  target_link_libraries(decode_with_drops PUBLIC webm)
+  target_link_libraries(lossless_encoder PUBLIC webm)
+  target_link_libraries(set_maps PUBLIC webm)
+  target_link_libraries(simple_decoder PUBLIC webm)
+  target_link_libraries(simple_encoder PUBLIC webm)
+  target_link_libraries(twopass_encoder PUBLIC webm)
+endif ()

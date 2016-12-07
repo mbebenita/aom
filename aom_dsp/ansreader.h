@@ -37,32 +37,42 @@ struct AnsDecoder {
 #endif
 };
 
+static INLINE unsigned refill_state(struct AnsDecoder *const ans,
+                                    unsigned state) {
+#if ANS_REVERSE
+  while (state < L_BASE && ans->buf_offset < 0) {
+    state = state * IO_BASE + ans->buf[ans->buf_offset++];
+  }
+#else
+  while (state < L_BASE && ans->buf_offset > 0) {
+    state = state * IO_BASE + ans->buf[--ans->buf_offset];
+  }
+#endif
+  return state;
+}
+
 static INLINE int uabs_read(struct AnsDecoder *ans, AnsP8 p0) {
   AnsP8 p = ANS_P8_PRECISION - p0;
   int s;
   unsigned xp, sp;
   unsigned state = ans->state;
-  while (state < L_BASE && ans->buf_offset > 0) {
-    state = state * IO_BASE + ans->buf[--ans->buf_offset];
-  }
   sp = state * p;
   xp = sp / ANS_P8_PRECISION;
   s = (sp & 0xFF) >= p0;
   if (s)
-    ans->state = xp;
+    state = xp;
   else
-    ans->state = state - xp;
+    state -= xp;
+  ans->state = refill_state(ans, state);
   return s;
 }
 
 static INLINE int uabs_read_bit(struct AnsDecoder *ans) {
   int s;
   unsigned state = ans->state;
-  while (state < L_BASE && ans->buf_offset > 0) {
-    state = state * IO_BASE + ans->buf[--ans->buf_offset];
-  }
   s = (int)(state & 1);
-  ans->state = state >> 1;
+  state >>= 1;
+  ans->state = refill_state(ans, state);
   return s;
 }
 
@@ -90,13 +100,11 @@ static INLINE int rans_read(struct AnsDecoder *ans, const aom_cdf_prob *tab) {
   unsigned rem;
   unsigned quo;
   struct rans_dec_sym sym;
-  while (ans->state < L_BASE && ans->buf_offset > 0) {
-    ans->state = ans->state * IO_BASE + ans->buf[--ans->buf_offset];
-  }
   quo = ans->state / RANS_PRECISION;
   rem = ans->state % RANS_PRECISION;
   fetch_sym(&sym, tab, rem);
   ans->state = quo * sym.prob + rem - sym.cum_prob;
+  ans->state = refill_state(ans, ans->state);
   return sym.val;
 }
 
@@ -104,20 +112,31 @@ static INLINE int ans_read_init(struct AnsDecoder *const ans,
                                 const uint8_t *const buf, int offset) {
   unsigned x;
   if (offset < 1) return 1;
+#if ANS_REVERSE
+  ans->buf = buf + offset;
+  ans->buf_offset = -offset;
+  x = buf[0];
+  if ((x & 0x80) == 0) {
+    if (offset < 2) return 1;
+    ans->buf_offset += 2;
+    ans->state = mem_get_be16(buf) & 0x7FFF;
+  } else {
+    if (offset < 3) return 1;
+    ans->buf_offset += 3;
+    ans->state = mem_get_be24(buf) & 0x7FFFFF;
+  }
+#else
   ans->buf = buf;
-  x = buf[offset - 1] >> 6;
-  if (x == 0) {
-    ans->buf_offset = offset - 1;
-    ans->state = buf[offset - 1] & 0x3F;
-  } else if (x == 1) {
+  x = buf[offset - 1];
+  if ((x & 0x80) == 0) {
     if (offset < 2) return 1;
     ans->buf_offset = offset - 2;
-    ans->state = mem_get_le16(buf + offset - 2) & 0x3FFF;
-  } else if (x == 2) {
+    ans->state = mem_get_le16(buf + offset - 2) & 0x7FFF;
+  } else if ((x & 0xC0) == 0x80) {
     if (offset < 3) return 1;
     ans->buf_offset = offset - 3;
     ans->state = mem_get_le24(buf + offset - 3) & 0x3FFFFF;
-  } else if ((buf[offset - 1] & 0xE0) == 0xE0) {
+  } else if ((x & 0xE0) == 0xE0) {
     if (offset < 4) return 1;
     ans->buf_offset = offset - 4;
     ans->state = mem_get_le32(buf + offset - 4) & 0x1FFFFFFF;
@@ -125,6 +144,7 @@ static INLINE int ans_read_init(struct AnsDecoder *const ans,
     // 110xxxxx implies this byte is a superframe marker
     return 1;
   }
+#endif  // ANS_REVERSE
 #if CONFIG_ACCOUNTING
   ans->accounting = NULL;
 #endif

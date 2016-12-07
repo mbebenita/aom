@@ -108,13 +108,16 @@ typedef struct frame_contexts {
 #if CONFIG_EXT_INTER
   aom_prob inter_compound_mode_probs[INTER_MODE_CONTEXTS]
                                     [INTER_COMPOUND_MODES - 1];
+  aom_prob compound_type_prob[BLOCK_SIZES][COMPOUND_TYPES - 1];
   aom_prob interintra_prob[BLOCK_SIZE_GROUPS];
   aom_prob interintra_mode_prob[BLOCK_SIZE_GROUPS][INTERINTRA_MODES - 1];
   aom_prob wedge_interintra_prob[BLOCK_SIZES];
-  aom_prob wedge_interinter_prob[BLOCK_SIZES];
 #endif  // CONFIG_EXT_INTER
 #if CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
   aom_prob motion_mode_prob[BLOCK_SIZES][MOTION_MODES - 1];
+#if CONFIG_MOTION_VAR && CONFIG_WARPED_MOTION
+  aom_prob obmc_prob[BLOCK_SIZES];
+#endif  // CONFIG_MOTION_VAR && CONFIG_WARPED_MOTION
 #endif  // CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
   aom_prob intra_inter_prob[INTRA_INTER_CONTEXTS];
   aom_prob comp_inter_prob[COMP_INTER_CONTEXTS];
@@ -128,10 +131,6 @@ typedef struct frame_contexts {
   aom_prob tx_size_probs[MAX_TX_DEPTH][TX_SIZE_CONTEXTS][MAX_TX_DEPTH];
 #if CONFIG_VAR_TX
   aom_prob txfm_partition_prob[TXFM_PARTITION_CONTEXTS];
-#if CONFIG_EXT_TX && CONFIG_RECT_TX
-  // TODO(yuec) make this flag harmonize with the original syntax
-  aom_prob rect_tx_prob[TX_SIZES - 1];
-#endif  // CONFIG_EXT_TX && CONFIG_RECT_TX
 #endif
   aom_prob skip_probs[SKIP_CONTEXTS];
 #if CONFIG_REF_MV
@@ -159,7 +158,7 @@ typedef struct frame_contexts {
   aom_prob filter_intra_probs[PLANE_TYPES];
 #endif  // CONFIG_FILTER_INTRA
 #if CONFIG_GLOBAL_MOTION
-  aom_prob global_motion_types_prob[GLOBAL_MOTION_TYPES - 1];
+  aom_prob global_motion_types_prob[GLOBAL_TRANS_TYPES - 1];
 #endif  // CONFIG_GLOBAL_MOTION
 #if CONFIG_LOOP_RESTORATION
   aom_prob switchable_restore_prob[RESTORE_SWITCHABLE_TYPES - 1];
@@ -221,10 +220,13 @@ typedef struct FRAME_COUNTS {
   unsigned int interintra[BLOCK_SIZE_GROUPS][2];
   unsigned int interintra_mode[BLOCK_SIZE_GROUPS][INTERINTRA_MODES];
   unsigned int wedge_interintra[BLOCK_SIZES][2];
-  unsigned int wedge_interinter[BLOCK_SIZES][2];
+  unsigned int compound_interinter[BLOCK_SIZES][COMPOUND_TYPES];
 #endif  // CONFIG_EXT_INTER
 #if CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
   unsigned int motion_mode[BLOCK_SIZES][MOTION_MODES];
+#if CONFIG_MOTION_VAR && CONFIG_WARPED_MOTION
+  unsigned int obmc[BLOCK_SIZES][2];
+#endif  // CONFIG_MOTION_VAR && CONFIG_WARPED_MOTION
 #endif  // CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
   unsigned int intra_inter[INTRA_INTER_CONTEXTS][2];
   unsigned int comp_inter[COMP_INTER_CONTEXTS][2];
@@ -242,9 +244,6 @@ typedef struct FRAME_COUNTS {
   unsigned int tx_size[MAX_TX_DEPTH][TX_SIZE_CONTEXTS][TX_SIZES];
 #if CONFIG_VAR_TX
   unsigned int txfm_partition[TXFM_PARTITION_CONTEXTS][2];
-#if CONFIG_EXT_TX && CONFIG_RECT_TX
-  unsigned int rect_tx[TX_SIZES - 1][2];
-#endif  // CONFIG_EXT_TX && CONFIG_RECT_TX
 #endif
   unsigned int skip[SKIP_CONTEXTS][2];
 #if CONFIG_REF_MV
@@ -313,6 +312,7 @@ extern const aom_tree_index
     av1_interintra_mode_tree[TREE_SIZE(INTERINTRA_MODES)];
 extern const aom_tree_index
     av1_inter_compound_mode_tree[TREE_SIZE(INTER_COMPOUND_MODES)];
+extern const aom_tree_index av1_compound_type_tree[TREE_SIZE(COMPOUND_TYPES)];
 #endif  // CONFIG_EXT_INTER
 extern const aom_tree_index av1_partition_tree[TREE_SIZE(PARTITION_TYPES)];
 #if CONFIG_EXT_PARTITION_TYPES
@@ -343,8 +343,10 @@ extern const aom_tree_index av1_motion_mode_tree[TREE_SIZE(MOTION_MODES)];
 #endif  // CONFIG_MOTION_VAR || CONFIG_WARPED_MOTION
 
 #if CONFIG_LOOP_RESTORATION
+#define RESTORE_NONE_SGRPROJ_PROB 64
 #define RESTORE_NONE_BILATERAL_PROB 16
 #define RESTORE_NONE_WIENER_PROB 64
+#define RESTORE_NONE_DOMAINTXFMRF_PROB 64
 extern const aom_tree_index
     av1_switchable_restore_tree[TREE_SIZE(RESTORE_SWITCHABLE_TYPES)];
 #endif  // CONFIG_LOOP_RESTORATION

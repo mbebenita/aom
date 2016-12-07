@@ -575,6 +575,7 @@ void av1_first_pass(AV1_COMP *cpi, const struct lookahead_entry *source) {
 #if CONFIG_ADAPT_SCAN
   av1_init_scan_order(cm);
 #endif
+  av1_convolve_init();
   av1_initialize_rd_consts(cpi);
 
   // Tiling is ignored in the first pass.
@@ -852,7 +853,8 @@ void av1_first_pass(AV1_COMP *cpi, const struct lookahead_entry *source) {
           xd->mi[0]->mbmi.tx_size = TX_4X4;
           xd->mi[0]->mbmi.ref_frame[0] = LAST_FRAME;
           xd->mi[0]->mbmi.ref_frame[1] = NONE;
-          av1_build_inter_predictors_sby(xd, mb_row << 1, mb_col << 1, bsize);
+          av1_build_inter_predictors_sby(xd, mb_row << 1, mb_col << 1, NULL,
+                                         bsize);
           av1_encode_sby_pass1(cm, x, bsize);
           sum_mvr += mv.row;
           sum_mvr_abs += abs(mv.row);

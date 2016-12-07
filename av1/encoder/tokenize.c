@@ -341,7 +341,8 @@ static void cost_coeffs_b(int plane, int block, int blk_row, int blk_col,
                              scan_order->neighbors, 0);
   args->this_rate += rate;
   (void)plane_bsize;
-  av1_set_contexts(xd, pd, tx_size, p->eobs[block] > 0, blk_col, blk_row);
+  av1_set_contexts(xd, pd, plane, tx_size, p->eobs[block] > 0, blk_col,
+                   blk_row);
 }
 
 static void set_entropy_context_b(int plane, int block, int blk_row,
@@ -354,7 +355,8 @@ static void set_entropy_context_b(int plane, int block, int blk_row,
   struct macroblock_plane *p = &x->plane[plane];
   struct macroblockd_plane *pd = &xd->plane[plane];
   (void)plane_bsize;
-  av1_set_contexts(xd, pd, tx_size, p->eobs[block] > 0, blk_col, blk_row);
+  av1_set_contexts(xd, pd, plane, tx_size, p->eobs[block] > 0, blk_col,
+                   blk_row);
 }
 
 static INLINE void add_token(TOKENEXTRA **t, const aom_prob *context_tree,
@@ -394,10 +396,10 @@ void av1_tokenize_palette_sb(const AV1_COMP *cpi,
   int i, j;
   int this_rate = 0;
   uint8_t color_order[PALETTE_MAX_SIZE];
-  const int rows = (4 * num_4x4_blocks_high_lookup[bsize]) >>
-                   (xd->plane[plane != 0].subsampling_y);
-  const int cols = (4 * num_4x4_blocks_wide_lookup[bsize]) >>
-                   (xd->plane[plane != 0].subsampling_x);
+  const int rows =
+      block_size_high[bsize] >> (xd->plane[plane != 0].subsampling_y);
+  const int cols =
+      block_size_wide[bsize] >> (xd->plane[plane != 0].subsampling_x);
   const aom_prob(*const probs)[PALETTE_COLOR_CONTEXTS][PALETTE_COLORS - 1] =
       plane == 0 ? av1_default_palette_y_color_prob
                  : av1_default_palette_uv_color_prob;
@@ -503,6 +505,11 @@ static void tokenize_b(int plane, int block, int blk_row, int blk_col,
     ++eob_branch[band[c]][pt];
   }
 
+#if CONFIG_COEF_INTERLEAVE
+  t->token = EOSB_TOKEN;
+  t++;
+#endif
+
   *tp = t;
 
 #if CONFIG_ADAPT_SCAN
@@ -513,7 +520,7 @@ static void tokenize_b(int plane, int block, int blk_row, int blk_col,
   av1_update_scan_count_facade((AV1_COMMON *)cm, tx_size, tx_type, qcoeff, c);
 #endif
 
-  av1_set_contexts(xd, pd, tx_size, c > 0, blk_col, blk_row);
+  av1_set_contexts(xd, pd, plane, tx_size, c > 0, blk_col, blk_row);
 }
 #endif
 
@@ -613,8 +620,6 @@ void tokenize_vartx(ThreadData *td, TOKENEXTRA **t, RUN_TYPE dry_run,
   const int max_blocks_wide = max_block_wide(xd, plane_bsize, plane);
   TX_SIZE plane_tx_size;
 
-  assert(tx_size < TX_SIZES);
-
   if (blk_row >= max_blocks_high || blk_col >= max_blocks_wide) return;
 
   plane_tx_size =
@@ -685,7 +690,7 @@ void av1_tokenize_sb_vartx(const AV1_COMP *cpi, ThreadData *td, TOKENEXTRA **t,
     const BLOCK_SIZE plane_bsize = get_plane_block_size(bsize, pd);
     const int mi_width = block_size_wide[plane_bsize] >> tx_size_wide_log2[0];
     const int mi_height = block_size_high[plane_bsize] >> tx_size_wide_log2[0];
-    const TX_SIZE max_tx_size = max_txsize_lookup[plane_bsize];
+    const TX_SIZE max_tx_size = max_txsize_rect_lookup[plane_bsize];
     const BLOCK_SIZE txb_size = txsize_to_bsize[max_tx_size];
     int bw = block_size_wide[txb_size] >> tx_size_wide_log2[0];
     int bh = block_size_high[txb_size] >> tx_size_wide_log2[0];
@@ -727,6 +732,10 @@ void av1_tokenize_sb(const AV1_COMP *cpi, ThreadData *td, TOKENEXTRA **t,
 
 #if !CONFIG_PVQ
   if (!dry_run) {
+#if CONFIG_COEF_INTERLEAVE
+    td->counts->skip[ctx][0] += skip_inc;
+    av1_foreach_transformed_block_interleave(xd, bsize, tokenize_b, &arg);
+#else
     int plane;
 
     td->counts->skip[ctx][0] += skip_inc;
@@ -736,6 +745,7 @@ void av1_tokenize_sb(const AV1_COMP *cpi, ThreadData *td, TOKENEXTRA **t,
       (*t)->token = EOSB_TOKEN;
       (*t)++;
     }
+#endif
   } else if (dry_run == DRY_RUN_NORMAL) {
     av1_foreach_transformed_block(xd, bsize, set_entropy_context_b, &arg);
   } else if (dry_run == DRY_RUN_COSTCOEFFS) {

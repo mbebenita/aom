@@ -103,14 +103,15 @@ TEST(AV1ConvolveTest, av1_convolve) {
   int subpel_x_q4;
   int subpel_y_q4;
 
+  ASSERT_LE(filter_size, 12);
   setup_convolve();
 
-  for (int i = 0; i < filter_size * filter_size; i++) {
+  for (int i = 0; i < static_cast<int>(sizeof(src) / sizeof(src[0])); i++) {
     src[i] = rnd.Rand16() % (1 << 8);
   }
 
-  for (subpel_x_q4 = 0; subpel_x_q4 < 16; subpel_x_q4++) {
-    for (subpel_y_q4 = 0; subpel_y_q4 < 16; subpel_y_q4++) {
+  for (subpel_x_q4 = 0; subpel_x_q4 < SUBPEL_SHIFTS; subpel_x_q4++) {
+    for (subpel_y_q4 = 0; subpel_y_q4 < SUBPEL_SHIFTS; subpel_y_q4++) {
       av1_convolve(src + src_stride * filter_center + filter_center, src_stride,
                    dst, dst_stride, w, h, interp_filter, subpel_x_q4, x_step_q4,
                    subpel_y_q4, y_step_q4, avg);
@@ -135,6 +136,68 @@ TEST(AV1ConvolveTest, av1_convolve) {
     }
   }
 }
+
+#if CONFIG_EXT_INTERP && CONFIG_DUAL_FILTER
+TEST(AV1ConvolveTest, av1_convolve_vert_first) {
+  ACMRandom rnd(ACMRandom::DeterministicSeed());
+  InterpFilter interp_filter[4] = { EIGHTTAP_REGULAR, MULTITAP_SHARP,
+                                    EIGHTTAP_REGULAR, MULTITAP_SHARP };
+  InterpFilterParams filter_params_x =
+      av1_get_interp_filter_params(interp_filter[1]);
+  InterpFilterParams filter_params_y =
+      av1_get_interp_filter_params(interp_filter[0]);
+  int filter_size_x = filter_params_x.taps;
+  int filter_size_y = filter_params_y.taps;
+  int filter_center_x = filter_size_x / 2 - 1;
+  int filter_center_y = filter_size_y / 2 - 1;
+  uint8_t src[12 * 12];
+  int src_stride = filter_size_x;
+  uint8_t dst[1] = { 0 };
+  int dst_stride = 1;
+  int x_step_q4 = 16;
+  int y_step_q4 = 16;
+  int avg = 0;
+  int w = 1;
+  int h = 1;
+
+  int subpel_x_q4;
+  int subpel_y_q4;
+
+  ASSERT_LE(filter_size_x, 12);
+  ASSERT_LE(filter_size_y, 12);
+  setup_convolve();
+
+  for (int i = 0; i < static_cast<int>(sizeof(src) / sizeof(src[0])); i++) {
+    src[i] = rnd.Rand16() % (1 << 8);
+  }
+
+  for (subpel_x_q4 = 1; subpel_x_q4 < SUBPEL_SHIFTS; subpel_x_q4++) {
+    for (subpel_y_q4 = 1; subpel_y_q4 < SUBPEL_SHIFTS; subpel_y_q4++) {
+      av1_convolve(src + src_stride * filter_center_y + filter_center_x,
+                   src_stride, dst, dst_stride, w, h, interp_filter,
+                   subpel_x_q4, x_step_q4, subpel_y_q4, y_step_q4, avg);
+
+      const int16_t *x_filter =
+          av1_get_interp_filter_subpel_kernel(filter_params_x, subpel_x_q4);
+      const int16_t *y_filter =
+          av1_get_interp_filter_subpel_kernel(filter_params_y, subpel_y_q4);
+
+      int temp[12];
+      int dst_ref = 0;
+      for (int c = 0; c < filter_size_x; c++) {
+        temp[c] = 0;
+        for (int r = 0; r < filter_size_y; r++) {
+          temp[c] += y_filter[r] * src[r * filter_size_x + c];
+        }
+        temp[c] = clip_pixel(ROUND_POWER_OF_TWO(temp[c], FILTER_BITS));
+        dst_ref += temp[c] * x_filter[c];
+      }
+      dst_ref = clip_pixel(ROUND_POWER_OF_TWO(dst_ref, FILTER_BITS));
+      EXPECT_EQ(dst[0], dst_ref);
+    }
+  }
+}
+#endif
 
 TEST(AV1ConvolveTest, av1_convolve_avg) {
   ACMRandom rnd(ACMRandom::DeterministicSeed());
@@ -176,8 +239,8 @@ TEST(AV1ConvolveTest, av1_convolve_avg) {
 
   int offset = filter_size * filter_center + filter_center;
 
-  for (subpel_x_q4 = 0; subpel_x_q4 < 16; subpel_x_q4++) {
-    for (subpel_y_q4 = 0; subpel_y_q4 < 16; subpel_y_q4++) {
+  for (subpel_x_q4 = 0; subpel_x_q4 < SUBPEL_SHIFTS; subpel_x_q4++) {
+    for (subpel_y_q4 = 0; subpel_y_q4 < SUBPEL_SHIFTS; subpel_y_q4++) {
       avg = 0;
       av1_convolve(src0 + offset, src_stride, dst0, dst_stride, w, h,
                    interp_filter, subpel_x_q4, x_step_q4, subpel_y_q4,
@@ -234,8 +297,8 @@ TEST(AV1ConvolveTest, av1_highbd_convolve) {
     src[i] = rnd.Rand16() % (1 << bd);
   }
 
-  for (subpel_x_q4 = 0; subpel_x_q4 < 16; subpel_x_q4++) {
-    for (subpel_y_q4 = 0; subpel_y_q4 < 16; subpel_y_q4++) {
+  for (subpel_x_q4 = 0; subpel_x_q4 < SUBPEL_SHIFTS; subpel_x_q4++) {
+    for (subpel_y_q4 = 0; subpel_y_q4 < SUBPEL_SHIFTS; subpel_y_q4++) {
       av1_highbd_convolve(
           CONVERT_TO_BYTEPTR(src + src_stride * filter_center + filter_center),
           src_stride, CONVERT_TO_BYTEPTR(dst), dst_stride, w, h, interp_filter,
@@ -300,8 +363,8 @@ TEST(AV1ConvolveTest, av1_highbd_convolve_avg) {
     src1[i] = rnd.Rand16() % (1 << bd);
   }
 
-  for (subpel_x_q4 = 0; subpel_x_q4 < 16; subpel_x_q4++) {
-    for (subpel_y_q4 = 0; subpel_y_q4 < 16; subpel_y_q4++) {
+  for (subpel_x_q4 = 0; subpel_x_q4 < SUBPEL_SHIFTS; subpel_x_q4++) {
+    for (subpel_y_q4 = 0; subpel_y_q4 < SUBPEL_SHIFTS; subpel_y_q4++) {
       int offset = filter_size * filter_center + filter_center;
 
       avg = 0;

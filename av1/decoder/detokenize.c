@@ -52,6 +52,9 @@ static INLINE int read_coeff(const aom_prob *probs, int n, aom_reader *r) {
 #if CONFIG_AOM_QM
 static int decode_coefs(MACROBLOCKD *xd, PLANE_TYPE type, tran_low_t *dqcoeff,
                         TX_SIZE tx_size, TX_TYPE tx_type, const int16_t *dq,
+#if CONFIG_NEW_QUANT
+                        dequant_val_type_nuq *dq_val,
+#endif  // CONFIG_NEW_QUANT
                         int ctx, const int16_t *scan, const int16_t *nb,
                         int16_t *max_scan_line, aom_reader *r,
                         const qm_val_t *iqm[2][TX_SIZES])
@@ -63,7 +66,7 @@ static int decode_coefs(MACROBLOCKD *xd, PLANE_TYPE type, tran_low_t *dqcoeff,
 #endif  // CONFIG_NEW_QUANT
                         int ctx, const int16_t *scan, const int16_t *nb,
                         int16_t *max_scan_line, aom_reader *r)
-#endif
+#endif  // CONFIG_AOM_QM
 {
   FRAME_COUNTS *counts = xd->counts;
   FRAME_CONTEXT *const fc = xd->fc;
@@ -71,7 +74,7 @@ static int decode_coefs(MACROBLOCKD *xd, PLANE_TYPE type, tran_low_t *dqcoeff,
   const int ref = is_inter_block(&xd->mi[0]->mbmi);
 #if CONFIG_AOM_QM
   const qm_val_t *iqmatrix = iqm[!ref][tx_size];
-#endif
+#endif  // CONFIG_AOM_QM
   int band, c = 0;
   const int tx_size_ctx = txsize_sqr_map[tx_size];
   aom_prob(*coef_probs)[COEFF_CONTEXTS][UNCONSTRAINED_NODES] =
@@ -99,6 +102,9 @@ static int decode_coefs(MACROBLOCKD *xd, PLANE_TYPE type, tran_low_t *dqcoeff,
   const uint8_t *cat5_prob;
   const uint8_t *cat6_prob;
   (void)tx_type;
+#if CONFIG_AOM_QM
+  (void)iqmatrix;
+#endif  // CONFIG_AOM_QM
 
   if (counts) {
     coef_counts = counts->coef[tx_size_ctx][type][ref];
@@ -305,10 +311,10 @@ void av1_decode_palette_tokens(MACROBLOCKD *const xd, int plane,
   const MODE_INFO *const mi = xd->mi[0];
   const MB_MODE_INFO *const mbmi = &mi->mbmi;
   const BLOCK_SIZE bsize = mbmi->sb_type;
-  const int rows = (4 * num_4x4_blocks_high_lookup[bsize]) >>
-                   (xd->plane[plane != 0].subsampling_y);
-  const int cols = (4 * num_4x4_blocks_wide_lookup[bsize]) >>
-                   (xd->plane[plane != 0].subsampling_x);
+  const int rows =
+      (block_size_high[bsize]) >> (xd->plane[plane != 0].subsampling_y);
+  const int cols =
+      (block_size_wide[bsize]) >> (xd->plane[plane != 0].subsampling_x);
   uint8_t color_order[PALETTE_MAX_SIZE];
   const int n = mbmi->palette_mode_info.palette_size[plane != 0];
   int i, j;
@@ -345,9 +351,12 @@ int av1_decode_block_tokens(MACROBLOCKD *const xd, int plane,
 #endif  //  CONFIG_NEW_QUANT
 
 #if CONFIG_AOM_QM
-  const int eob = decode_coefs(xd, pd->plane_type, pd->dqcoeff, tx_size,
-                               tx_type, dequant, ctx, sc->scan, sc->neighbors,
-                               max_scan_line, r, pd->seg_iqmatrix[seg_id]);
+  const int eob = decode_coefs(
+      xd, pd->plane_type, pd->dqcoeff, tx_size, tx_type, dequant,
+#if CONFIG_NEW_QUANT
+      pd->seg_dequant_nuq[seg_id][dq],
+#endif  // CONFIG_NEW_QUANT
+      ctx, sc->scan, sc->neighbors, max_scan_line, r, pd->seg_iqmatrix[seg_id]);
 #else
   const int eob =
       decode_coefs(xd, pd->plane_type, pd->dqcoeff, tx_size, tx_type, dequant,
@@ -356,7 +365,7 @@ int av1_decode_block_tokens(MACROBLOCKD *const xd, int plane,
 #endif  // CONFIG_NEW_QUANT
                    ctx, sc->scan, sc->neighbors, max_scan_line, r);
 #endif  // CONFIG_AOM_QM
-  av1_set_contexts(xd, pd, tx_size, eob > 0, x, y);
+  av1_set_contexts(xd, pd, plane, tx_size, eob > 0, x, y);
   return eob;
 }
 #endif

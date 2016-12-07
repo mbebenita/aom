@@ -14,6 +14,7 @@
 #include "aom_ports/system_state.h"
 
 #include "av1/common/blockd.h"
+#include "av1/common/onyxc_int.h"
 
 PREDICTION_MODE av1_left_block_mode(const MODE_INFO *cur_mi,
                                     const MODE_INFO *left_mi, int b) {
@@ -39,6 +40,87 @@ PREDICTION_MODE av1_above_block_mode(const MODE_INFO *cur_mi,
   }
 }
 
+#if CONFIG_COEF_INTERLEAVE
+void av1_foreach_transformed_block_interleave(
+    const MACROBLOCKD *const xd, BLOCK_SIZE bsize,
+    foreach_transformed_block_visitor visit, void *arg) {
+  const struct macroblockd_plane *const pd_y = &xd->plane[0];
+  const struct macroblockd_plane *const pd_c = &xd->plane[1];
+  const MB_MODE_INFO *mbmi = &xd->mi[0]->mbmi;
+
+  const TX_SIZE tx_log2_y = mbmi->tx_size;
+  const TX_SIZE tx_log2_c = get_uv_tx_size(mbmi, pd_c);
+  const int tx_sz_y = (1 << tx_log2_y);
+  const int tx_sz_c = (1 << tx_log2_c);
+
+  const BLOCK_SIZE plane_bsize_y = get_plane_block_size(bsize, pd_y);
+  const BLOCK_SIZE plane_bsize_c = get_plane_block_size(bsize, pd_c);
+
+  const int num_4x4_w_y = num_4x4_blocks_wide_lookup[plane_bsize_y];
+  const int num_4x4_w_c = num_4x4_blocks_wide_lookup[plane_bsize_c];
+  const int num_4x4_h_y = num_4x4_blocks_high_lookup[plane_bsize_y];
+  const int num_4x4_h_c = num_4x4_blocks_high_lookup[plane_bsize_c];
+
+  const int step_y = 1 << (tx_log2_y << 1);
+  const int step_c = 1 << (tx_log2_c << 1);
+
+  const int max_4x4_w_y =
+      get_max_4x4_size(num_4x4_w_y, xd->mb_to_right_edge, pd_y->subsampling_x);
+  const int max_4x4_h_y =
+      get_max_4x4_size(num_4x4_h_y, xd->mb_to_bottom_edge, pd_y->subsampling_y);
+
+  const int extra_step_y = ((num_4x4_w_y - max_4x4_w_y) >> tx_log2_y) * step_y;
+
+  const int max_4x4_w_c =
+      get_max_4x4_size(num_4x4_w_c, xd->mb_to_right_edge, pd_c->subsampling_x);
+  const int max_4x4_h_c =
+      get_max_4x4_size(num_4x4_h_c, xd->mb_to_bottom_edge, pd_c->subsampling_y);
+
+  const int extra_step_c = ((num_4x4_w_c - max_4x4_w_c) >> tx_log2_c) * step_c;
+
+  // The max_4x4_w/h may be smaller than tx_sz under some corner cases,
+  // i.e. when the SB is splitted by tile boundaries.
+  const int tu_num_w_y = (max_4x4_w_y + tx_sz_y - 1) / tx_sz_y;
+  const int tu_num_h_y = (max_4x4_h_y + tx_sz_y - 1) / tx_sz_y;
+  const int tu_num_w_c = (max_4x4_w_c + tx_sz_c - 1) / tx_sz_c;
+  const int tu_num_h_c = (max_4x4_h_c + tx_sz_c - 1) / tx_sz_c;
+  const int tu_num_y = tu_num_w_y * tu_num_h_y;
+  const int tu_num_c = tu_num_w_c * tu_num_h_c;
+
+  int tu_idx_c = 0;
+  int offset_y, row_y, col_y;
+  int offset_c, row_c, col_c;
+
+  for (row_y = 0; row_y < tu_num_h_y; row_y++) {
+    for (col_y = 0; col_y < tu_num_w_y; col_y++) {
+      // luma
+      offset_y = (row_y * tu_num_w_y + col_y) * step_y + row_y * extra_step_y;
+      visit(0, offset_y, row_y * tx_sz_y, col_y * tx_sz_y, plane_bsize_y,
+            tx_log2_y, arg);
+      // chroma
+      if (tu_idx_c < tu_num_c) {
+        row_c = (tu_idx_c / tu_num_w_c) * tx_sz_c;
+        col_c = (tu_idx_c % tu_num_w_c) * tx_sz_c;
+        offset_c = tu_idx_c * step_c + (tu_idx_c / tu_num_w_c) * extra_step_c;
+        visit(1, offset_c, row_c, col_c, plane_bsize_c, tx_log2_c, arg);
+        visit(2, offset_c, row_c, col_c, plane_bsize_c, tx_log2_c, arg);
+        tu_idx_c++;
+      }
+    }
+  }
+
+  // In 422 case, it's possible that Chroma has more TUs than Luma
+  while (tu_idx_c < tu_num_c) {
+    row_c = (tu_idx_c / tu_num_w_c) * tx_sz_c;
+    col_c = (tu_idx_c % tu_num_w_c) * tx_sz_c;
+    offset_c = tu_idx_c * step_c + row_c * extra_step_c;
+    visit(1, offset_c, row_c, col_c, plane_bsize_c, tx_log2_c, arg);
+    visit(2, offset_c, row_c, col_c, plane_bsize_c, tx_log2_c, arg);
+    tu_idx_c++;
+  }
+}
+#endif
+
 void av1_foreach_transformed_block_in_plane(
     const MACROBLOCKD *const xd, BLOCK_SIZE bsize, int plane,
     foreach_transformed_block_visitor visit, void *arg) {
@@ -49,8 +131,6 @@ void av1_foreach_transformed_block_in_plane(
   // transform size varies per plane, look it up in a common way.
   const TX_SIZE tx_size = plane ? get_uv_tx_size(mbmi, pd) : mbmi->tx_size;
   const BLOCK_SIZE plane_bsize = get_plane_block_size(bsize, pd);
-  const int num_4x4_w = block_size_wide[plane_bsize];
-  const int num_4x4_h = block_size_high[plane_bsize];
   const uint8_t txw_unit = tx_size_wide_unit[tx_size];
   const uint8_t txh_unit = tx_size_high_unit[tx_size];
   const int step = txw_unit * txh_unit;
@@ -59,19 +139,8 @@ void av1_foreach_transformed_block_in_plane(
   // If mb_to_right_edge is < 0 we are in a situation in which
   // the current block size extends into the UMV and we won't
   // visit the sub blocks that are wholly within the UMV.
-  int max_blocks_wide =
-      num_4x4_w + (xd->mb_to_right_edge >= 0 ? 0 : xd->mb_to_right_edge >>
-                                                       (3 + pd->subsampling_x));
-  int max_blocks_high =
-      num_4x4_h + (xd->mb_to_bottom_edge >= 0
-                       ? 0
-                       : xd->mb_to_bottom_edge >> (3 + pd->subsampling_y));
-  const int extra_step =
-      ((num_4x4_w - max_blocks_wide) >> tx_size_wide_log2[tx_size]) * step;
-
-  // Scale to the transform block unit.
-  max_blocks_wide >>= tx_size_wide_log2[0];
-  max_blocks_high >>= tx_size_high_log2[0];
+  const int max_blocks_wide = max_block_wide(xd, plane_bsize, plane);
+  const int max_blocks_high = max_block_high(xd, plane_bsize, plane);
 
   // Keep track of the row and column of the blocks we use so that we know
   // if we are in the unrestricted motion border.
@@ -81,7 +150,6 @@ void av1_foreach_transformed_block_in_plane(
       visit(plane, i, r, c, plane_bsize, tx_size, arg);
       i += step;
     }
-    i += extra_step;
   }
 }
 
@@ -96,17 +164,19 @@ void av1_foreach_transformed_block(const MACROBLOCKD *const xd,
 
 #if !CONFIG_PVQ
 void av1_set_contexts(const MACROBLOCKD *xd, struct macroblockd_plane *pd,
-                      TX_SIZE tx_size, int has_eob, int aoff, int loff) {
+                      int plane, TX_SIZE tx_size, int has_eob, int aoff,
+                      int loff) {
   ENTROPY_CONTEXT *const a = pd->above_context + aoff;
   ENTROPY_CONTEXT *const l = pd->left_context + loff;
   const int txs_wide = tx_size_wide_unit[tx_size];
   const int txs_high = tx_size_high_unit[tx_size];
+  const BLOCK_SIZE bsize = AOMMAX(xd->mi[0]->mbmi.sb_type, BLOCK_8X8);
+  const BLOCK_SIZE plane_bsize = get_plane_block_size(bsize, pd);
 
   // above
   if (has_eob && xd->mb_to_right_edge < 0) {
     int i;
-    const int blocks_wide =
-        pd->n4_w + (xd->mb_to_right_edge >> (5 + pd->subsampling_x));
+    const int blocks_wide = max_block_wide(xd, plane_bsize, plane);
     int above_contexts = txs_wide;
     if (above_contexts + aoff > blocks_wide)
       above_contexts = blocks_wide - aoff;
@@ -120,8 +190,7 @@ void av1_set_contexts(const MACROBLOCKD *xd, struct macroblockd_plane *pd,
   // left
   if (has_eob && xd->mb_to_bottom_edge < 0) {
     int i;
-    const int blocks_high =
-        pd->n4_h + (xd->mb_to_bottom_edge >> (5 + pd->subsampling_y));
+    const int blocks_high = max_block_high(xd, plane_bsize, plane);
     int left_contexts = txs_high;
     if (left_contexts + loff > blocks_high) left_contexts = blocks_high - loff;
 

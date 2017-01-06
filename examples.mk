@@ -111,6 +111,18 @@ endif
 aomenc.GUID                  = 548DEC74-7A15-4B2B-AFC3-AA102E7C25C1
 aomenc.DESCRIPTION           = Full featured encoder
 
+UTILS-$(CONFIG_DECODERS)    += aomanalyzer.c
+aomanalyzer.GUID             = FA46A420-3356-441F-B0FD-60AA1345C181
+aomanalyzer.SRCS            += ivfdec.h ivfdec.c
+aomanalyzer.SRCS            += args.c args.h
+aomanalyzer.SRCS            += tools_common.h tools_common.c
+aomanalyzer.SRCS            += video_common.h
+aomanalyzer.SRCS            += video_reader.h video_reader.c
+aomanalyzer.SRCS            += aom_ports/mem_ops.h
+aomanalyzer.SRCS            += aom_ports/mem_ops_aligned.h
+aomanalyzer.SRCS            += aom_ports/msvc.h
+aomanalyzer.DESCRIPTION      = Analyzer decoder loop
+
 EXAMPLES-$(CONFIG_DECODERS)        += simple_decoder.c
 simple_decoder.GUID                 = D3BBF1E9-2427-450D-BBFF-B2843C1D44CC
 simple_decoder.SRCS                += ivfdec.h ivfdec.c

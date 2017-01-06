@@ -28,6 +28,8 @@ extern "C" {
 /* Include controls common to both the encoder and decoder */
 #include "./aom.h"
 
+typedef struct AnalyzerData AnalyzerData;
+
 /*!\name Algorithm interface for AV1
  *
  * This interface provides the capability to decode AV1 streams.
@@ -120,6 +122,8 @@ enum aom_dec_control_id {
    */
   AOMD_GET_LAST_QUANTIZER,
 
+  ANALYZER_SET_DATA,
+
   /** control function to set the range of tile decoding. A value that is
    * greater and equal to zero indicates only the specific row/column is
    * decoded. A value that is -1 indicates the whole row/column is decoded.
@@ -184,6 +188,8 @@ AOM_CTRL_USE_TYPE(AV1_SET_DECODE_TILE_ROW, int)
 #define AOM_CTRL_AV1_SET_DECODE_TILE_ROW
 AOM_CTRL_USE_TYPE(AV1_SET_DECODE_TILE_COL, int)
 #define AOM_CTRL_AV1_SET_DECODE_TILE_COL
+AOM_CTRL_USE_TYPE(ANALYZER_SET_DATA, AnalyzerData *)
+#define AOM_CTRL_ANALYZER_SET_DATA
 /*!\endcond */
 /*! @} - end defgroup aom_decoder */
 

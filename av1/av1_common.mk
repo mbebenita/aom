@@ -104,6 +104,10 @@ AV1_COMMON_SRCS-yes += common/accounting.c
 endif
 AV1_COMMON_SRCS-yes += common/odintrin.c
 AV1_COMMON_SRCS-yes += common/odintrin.h
+ifeq ($(CONFIG_ANALYZER),yes)
+AV1_COMMON_SRCS-yes += analyzer/analyzer.c
+AV1_COMMON_SRCS-yes += analyzer/analyzer.h
+endif
 
 ifeq ($(CONFIG_PVQ),yes)
 # PVQ from daala

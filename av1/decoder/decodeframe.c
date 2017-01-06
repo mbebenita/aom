@@ -36,6 +36,9 @@
 #if CONFIG_DERING
 #include "av1/common/dering.h"
 #endif  // CONFIG_DERING
+#if CONFIG_ANALYZER
+#include "av1/analyzer/analyzer.h"
+#endif
 #include "av1/common/entropy.h"
 #include "av1/common/entropymode.h"
 #include "av1/common/entropymv.h"
@@ -4970,6 +4973,10 @@ void av1_decode_frame(AV1Decoder *pbi, const uint8_t *data,
     aom_internal_error(&cm->error, AOM_CODEC_CORRUPT_FRAME,
                        "Decode failed. Frame data is corrupted.");
   }
+
+#if CONFIG_ANALYZER
+  analyzer_record_frame(pbi);
+#endif  // CONFIG_DERING
 
   // Non frame parallel update frame context here.
   if (!cm->error_resilient_mode && !context_updated)

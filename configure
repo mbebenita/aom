@@ -62,6 +62,7 @@ Advanced options:
   ${toggle_webm_io}               enable input from and output to WebM container
   ${toggle_libyuv}                enable libyuv
   ${toggle_accounting}            enable bit accounting
+  ${toggle_analyzer}              enable analyzer
 
 Codecs:
   Codecs can be selectively enabled or disabled individually, or by family:
@@ -349,6 +350,7 @@ CONFIG_LIST="
     webm_io
     libyuv
     accounting
+    analyzer
     decode_perf_tests
     encode_perf_tests
     multi_res_encoding
@@ -410,6 +412,7 @@ CMDLINE_SELECT="
     webm_io
     libyuv
     accounting
+    analyzer
     decode_perf_tests
     encode_perf_tests
     multi_res_encoding

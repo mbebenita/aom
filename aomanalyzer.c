@@ -271,16 +271,29 @@ void print_accounting() {
   int i;
   const Accounting *accounting = analyzer_data.accounting;
   const int num_syms = accounting->syms.num_syms;
-  printf("  \"symbols\": [\n");
+  const int num_strs = accounting->syms.dictionary.num_strs;
+  printf("  \"symbolsMap\": [");
+  for (i = 0; i < num_strs; i++) {
+    printf("\"%s\"", accounting->syms.dictionary.strs[i]);
+    if (i < num_strs - 1) printf(",");
+  }
+  printf("],\n");
+  printf("  \"symbols\": [\n    ");
+  AccountingSymbolContext context;
+  context.x = -2;
+  context.y = -2;
   AccountingSymbol *sym;
   for (i = 0; i < num_syms; i++) {
     sym = &accounting->syms.syms[i];
-    printf("    [%d, %d, \"%s\", %d, %d]", sym->context.x, sym->context.y,
-           accounting->syms.dictionary.strs[sym->id], sym->bits, sym->samples);
+    if (memcmp(&context, &sym->context, sizeof(AccountingSymbolContext)) == -1) {
+      printf("[%d,%d]", sym->context.x, sym->context.y);
+    } else {
+      printf("[%d,%d,%d]", sym->id, sym->bits, sym->samples);
+    }
+    context = sym->context;
     if (i < num_syms - 1) printf(",");
-    printf("\n");
   }
-  printf("  ],\n");
+  printf("],\n");
 }
 #endif
 

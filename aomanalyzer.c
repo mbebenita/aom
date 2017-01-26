@@ -127,40 +127,44 @@ void init_analyzer() {
   analyzer_data.ready = on_frame_decoded;
 }
 
-void print_list(const char **list) {
+int print_list(char *buffer, const char **list) {
+  char *buf = buffer;
   const char **name = list;
   while (*name != NULL) {
-    printf("\"%s\"", *name);
+    buf += sprintf(buf, "\"%s\"", *name);
     name++;
     if (*name != NULL) {
-      printf(", ");
+      buf += sprintf(buf, ", ");
     }
   }
+  return buf - buffer;
 }
 
-void print_block_info(const char **map, const char *name, size_t offset) {
+int print_block_info(char *buffer, const char **map, const char *name,
+                     size_t offset) {
   const int mi_rows = analyzer_data.mi_rows;
   const int mi_cols = analyzer_data.mi_cols;
+  char *buf = buffer;
   int r, c, v;
   if (map) {
-    printf("  \"%sMap\": [", name);
-    print_list(map);
-    printf("],\n");
+    buf += sprintf(buf, "  \"%sMap\": [", name);
+    buf += print_list(buf, map);
+    buf += sprintf(buf, "],\n");
   }
-  printf("  \"%s\": [\n", name);
+  buf += sprintf(buf, "  \"%s\": [", name);
   for (r = 0; r < mi_rows; ++r) {
-    printf("    [");
+    buf += sprintf(buf, "[");
     for (c = 0; c < mi_cols; ++c) {
       AnalyzerMI *mi = &analyzer_data.mi_grid.buffer[r * mi_cols + c];
       v = *(((int8_t *)mi) + offset);
-      if (c) printf(",");
-      printf("%d", v);
+      if (c) buf += sprintf(buf, ",");
+      buf += sprintf(buf, "%d", v);
     }
-    printf("]");
-    if (r < mi_rows - 1) printf(",");
-    printf("\n");
+    buf += sprintf(buf, "]");
+    if (r < mi_rows - 1) buf += sprintf(buf, ",");
   }
-  printf("  ],\n");
+  buf += sprintf(buf, "],\n");
+  return buf - buffer;
 }
 
 #if CONFIG_EXT_REFS
@@ -267,70 +271,82 @@ const char *prediction_mode_map[] = { "DC_PRED",
 const char *skip_map[] = { "NO SKIP", "SKIP", NULL };
 
 #if CONFIG_ACCOUNTING
-void print_accounting() {
+int print_accounting(char *buffer) {
+  char *buf = buffer;
   int i;
   const Accounting *accounting = analyzer_data.accounting;
   const int num_syms = accounting->syms.num_syms;
   const int num_strs = accounting->syms.dictionary.num_strs;
-  printf("  \"symbolsMap\": [");
+  buf += sprintf(buf, "  \"symbolsMap\": [");
   for (i = 0; i < num_strs; i++) {
-    printf("\"%s\"", accounting->syms.dictionary.strs[i]);
-    if (i < num_strs - 1) printf(",");
+    buf += sprintf(buf, "\"%s\"", accounting->syms.dictionary.strs[i]);
+    if (i < num_strs - 1) buf += sprintf(buf, ",");
   }
-  printf("],\n");
-  printf("  \"symbols\": [\n    ");
+  buf += sprintf(buf, "],\n");
+  buf += sprintf(buf, "  \"symbols\": [\n    ");
   AccountingSymbolContext context;
   context.x = -2;
   context.y = -2;
   AccountingSymbol *sym;
   for (i = 0; i < num_syms; i++) {
     sym = &accounting->syms.syms[i];
-    if (memcmp(&context, &sym->context, sizeof(AccountingSymbolContext)) == -1) {
-      printf("[%d,%d]", sym->context.x, sym->context.y);
+    if (memcmp(&context, &sym->context, sizeof(AccountingSymbolContext)) ==
+        -1) {
+      buf += sprintf(buf, "[%d,%d]", sym->context.x, sym->context.y);
     } else {
-      printf("[%d,%d,%d]", sym->id, sym->bits, sym->samples);
+      buf += sprintf(buf, "[%d,%d,%d]", sym->id, sym->bits, sym->samples);
     }
     context = sym->context;
-    if (i < num_syms - 1) printf(",");
+    if (i < num_syms - 1) buf += sprintf(buf, ",");
   }
-  printf("],\n");
+  buf += sprintf(buf, "],\n");
+  return buf - buffer;
 }
 #endif
 
 void on_frame_decoded() {
+  const int MAX_BUFFER = 1024 * 1024;
+  char *buffer = aom_malloc(MAX_BUFFER);
+  char *buf = buffer;
+
   aom_codec_control(&codec, ANALYZER_SET_DATA, &analyzer_data);
-  printf("{\n");
+  buf += sprintf(buf, "{\n");
   if (layers & BLOCK_SIZE_LAYER)
-    print_block_info(block_size_map, "blockSize",
-                     offsetof(AnalyzerMI, block_size));
+    buf += print_block_info(buf, block_size_map, "blockSize",
+                            offsetof(AnalyzerMI, block_size));
   if (layers & TRANSFORM_SIZE_LAYER)
-    print_block_info(transform_size_map, "transformSize",
-                     offsetof(AnalyzerMI, transform_size));
+    buf += print_block_info(buf, transform_size_map, "transformSize",
+                            offsetof(AnalyzerMI, transform_size));
   if (layers & TRANSFORM_TYPE_LAYER)
-    print_block_info(transform_type_map, "transformType",
-                     offsetof(AnalyzerMI, transform_type));
+    buf += print_block_info(buf, transform_type_map, "transformType",
+                            offsetof(AnalyzerMI, transform_type));
   if (layers & MODE_LAYER)
-    print_block_info(prediction_mode_map, "mode", offsetof(AnalyzerMI, mode));
+    buf += print_block_info(buf, prediction_mode_map, "mode",
+                            offsetof(AnalyzerMI, mode));
   if (layers & SKIP_LAYER)
-    print_block_info(skip_map, "skip", offsetof(AnalyzerMI, skip));
+    buf += print_block_info(buf, skip_map, "skip", offsetof(AnalyzerMI, skip));
   if (layers & FILTER_LAYER)
-    print_block_info(NULL, "filter", offsetof(AnalyzerMI, filter));
+    buf += print_block_info(buf, NULL, "filter", offsetof(AnalyzerMI, filter));
   if (layers & DERING_GAIN_LAYER)
-    print_block_info(NULL, "deringGain", offsetof(AnalyzerMI, dering_gain));
+    buf += print_block_info(buf, NULL, "deringGain",
+                            offsetof(AnalyzerMI, dering_gain));
   if (layers & REFERENCE_FRAME_LAYER) {
-    print_block_info(refs_map, "referenceFrame0",
-                     offsetof(AnalyzerMI, mv_reference_frame[0]));
-    print_block_info(refs_map, "referenceFrame1",
-                     offsetof(AnalyzerMI, mv_reference_frame[1]));
+    buf += print_block_info(buf, refs_map, "referenceFrame0",
+                            offsetof(AnalyzerMI, mv_reference_frame[0]));
+    buf += print_block_info(buf, refs_map, "referenceFrame1",
+                            offsetof(AnalyzerMI, mv_reference_frame[1]));
   }
 #if CONFIG_ACCOUNTING
-  if (layers & ACCOUNTING_LAYER) print_accounting();
+  if (layers & ACCOUNTING_LAYER) buf += print_accounting(buf);
 #endif
-  printf("  \"frame\": %d,\n", decoded_frame_count);
-  printf("  \"showFrame\": %d,\n", analyzer_data.show_frame);
-  printf("  \"frameType\": %d\n", analyzer_data.frame_type);
-  printf("},\n");
+  buf += sprintf(buf, "  \"frame\": %d,\n", decoded_frame_count);
+  buf += sprintf(buf, "  \"showFrame\": %d,\n", analyzer_data.show_frame);
+  buf += sprintf(buf, "  \"frameType\": %d,\n", analyzer_data.frame_type);
+  buf += sprintf(buf, "  \"baseQIndex\": %d\n", analyzer_data.base_qindex);
   decoded_frame_count++;
+  buf += sprintf(buf, "},\n");
+  printf("%s", buffer);
+  aom_free(buffer);
 }
 
 EMSCRIPTEN_KEEPALIVE

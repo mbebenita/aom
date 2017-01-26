@@ -113,6 +113,16 @@ struct AV1Decoder *pbi = NULL;
 
 void on_frame_decoded();
 
+void on_frame_decoded_dump(char *json) {
+#ifdef __EMSCRIPTEN__
+  EM_ASM_({
+    Module.on_frame_decoded_json($0);
+  }, json);
+#else
+  printf("%s", json);
+#endif
+}
+
 AnalyzerData analyzer_data;
 
 void init_analyzer() {
@@ -345,7 +355,7 @@ void on_frame_decoded() {
   buf += sprintf(buf, "  \"baseQIndex\": %d\n", analyzer_data.base_qindex);
   decoded_frame_count++;
   buf += sprintf(buf, "},\n");
-  printf("%s", buffer);
+  on_frame_decoded_dump(buffer);
   aom_free(buffer);
 }
 

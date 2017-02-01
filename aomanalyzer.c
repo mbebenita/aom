@@ -358,7 +358,7 @@ int print_accounting(char *buffer) {
 #endif
 
 void on_frame_decoded() {
-  const int MAX_BUFFER = 1024 * 1024;
+  const int MAX_BUFFER = 1024 * 1024 * 32;
   char *buffer = aom_malloc(MAX_BUFFER);
   char *buf = buffer;
 

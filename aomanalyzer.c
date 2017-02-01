@@ -52,7 +52,8 @@ typedef enum {
   FILTER_LAYER = 1 << 6,
   DERING_GAIN_LAYER = 1 << 7,
   REFERENCE_FRAME_LAYER = 1 << 8,
-  ALL_LAYERS = (1 << 9) - 1
+  MOTION_VECTORS_LAYER = 1 << 9,
+  ALL_LAYERS = (1 << 10) - 1
 } LayerType;
 
 static LayerType layers = 0;  // ALL_LAYERS;
@@ -67,6 +68,8 @@ static const arg_def_t dump_accounting_arg =
     ARG_DEF("a", "accounting", 0, "Dump Accounting");
 static const arg_def_t dump_block_size_arg =
     ARG_DEF("bs", "blockSize", 0, "Dump Block Size");
+static const arg_def_t dump_motion_vectors_arg =
+    ARG_DEF("mv", "motionVectors", 0, "Dump Motion Vectors");
 static const arg_def_t dump_transform_size_arg =
     ARG_DEF("ts", "transformSize", 0, "Dump Transform Size");
 static const arg_def_t dump_transform_type_arg =
@@ -96,6 +99,7 @@ static const arg_def_t *main_args[] = { &limit_arg,
                                         &dump_filter_arg,
                                         &dump_dering_gain_arg,
                                         &dump_reference_frame_arg,
+                                        &dump_motion_vectors_arg,
                                         &usage_arg,
                                         NULL };
 
@@ -150,6 +154,45 @@ int print_list(char *buffer, const char **list) {
   return buf - buffer;
 }
 
+int print_reference_frame(char *buffer) {
+  const int mi_rows = analyzer_data.mi_rows;
+  const int mi_cols = analyzer_data.mi_cols;
+  char *buf = buffer;
+  int r, c;
+  buf += sprintf(buf, "  \"%s\": [", "referenceFrame");
+  for (r = 0; r < mi_rows; ++r) {
+    buf += sprintf(buf, "[");
+    for (c = 0; c < mi_cols; ++c) {
+      AnalyzerMI *mi = &analyzer_data.mi_grid.buffer[r * mi_cols + c];
+      if (c) buf += sprintf(buf, ",");
+      buf += sprintf(buf, "[%d, %d]", mi->mv_reference_frame[0], mi->mv_reference_frame[1]);
+    }
+    buf += sprintf(buf, "]");
+    if (r < mi_rows - 1) buf += sprintf(buf, ",");
+  }
+  buf += sprintf(buf, "],\n");
+  return buf - buffer;
+}
+
+int print_motion_vectors(char *buffer) {
+  const int mi_rows = analyzer_data.mi_rows;
+  const int mi_cols = analyzer_data.mi_cols;
+  char *buf = buffer;
+  int r, c;
+  buf += sprintf(buf, "  \"%s\": [", "motionVectors");
+  for (r = 0; r < mi_rows; ++r) {
+    buf += sprintf(buf, "[");
+    for (c = 0; c < mi_cols; ++c) {
+      AnalyzerMI *mi = &analyzer_data.mi_grid.buffer[r * mi_cols + c];
+      if (c) buf += sprintf(buf, ",");
+      buf += sprintf(buf, "[%d,%d,%d,%d]", mi->mv[0].col, mi->mv[0].row, mi->mv[1].col, mi->mv[1].row);
+    }
+    buf += sprintf(buf, "]");
+    if (r < mi_rows - 1) buf += sprintf(buf, ",");
+  }
+  buf += sprintf(buf, "],\n");
+  return buf - buffer;
+}
 int print_block_info(char *buffer, const char **map, const char *name,
                      size_t offset) {
   const int mi_rows = analyzer_data.mi_rows;
@@ -340,12 +383,10 @@ void on_frame_decoded() {
   if (layers & DERING_GAIN_LAYER)
     buf += print_block_info(buf, NULL, "deringGain",
                             offsetof(AnalyzerMI, dering_gain));
-  if (layers & REFERENCE_FRAME_LAYER) {
-    buf += print_block_info(buf, refs_map, "referenceFrame0",
-                            offsetof(AnalyzerMI, mv_reference_frame[0]));
-    buf += print_block_info(buf, refs_map, "referenceFrame1",
-                            offsetof(AnalyzerMI, mv_reference_frame[1]));
-  }
+  if (layers & MOTION_VECTORS_LAYER)
+    buf += print_motion_vectors(buf);
+  if (layers & REFERENCE_FRAME_LAYER)
+    buf += print_reference_frame(buf);
 #if CONFIG_ACCOUNTING
   if (layers & ACCOUNTING_LAYER) buf += print_accounting(buf);
 #endif
@@ -444,6 +485,8 @@ static void parse_args(char **argv) {
       layers |= DERING_GAIN_LAYER;
     else if (arg_match(&arg, &dump_reference_frame_arg, argi))
       layers |= REFERENCE_FRAME_LAYER;
+    else if (arg_match(&arg, &dump_motion_vectors_arg, argi))
+      layers |= MOTION_VECTORS_LAYER;
     else if (arg_match(&arg, &dump_all_arg, argi))
       layers |= ALL_LAYERS;
     else if (arg_match(&arg, &usage_arg, argi))

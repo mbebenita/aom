@@ -2,7 +2,7 @@ echo Building Analyzer
 if [ ! -d "asm" ]; then
   echo Configuring Analyzer
   mkdir asm
-  cd asm && emconfigure ../configure --disable-multithread --disable-runtime-cpu-detect --target=generic-gnu --enable-accounting --enable-analyzer
+  cd asm && emconfigure ../configure --disable-multithread --disable-runtime-cpu-detect --target=generic-gnu --enable-accounting --enable-analyzer --enable-aom_highbitdepth
 fi
 
 cd asm

@@ -24,6 +24,7 @@ AnalyzerError analyzer_record_frame(struct AV1Decoder *pbi) {
   }
   analyzer_data->show_frame = cm->show_frame;
   analyzer_data->frame_type = cm->frame_type;
+  analyzer_data->base_qindex = cm->base_qindex;
   analyzer_data->mi_rows = mi_rows;
   analyzer_data->mi_cols = mi_cols;
   analyzer_data->tile_rows_log2 = cm->log2_tile_rows;

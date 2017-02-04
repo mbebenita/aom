@@ -103,123 +103,6 @@ static const arg_def_t *main_args[] = { &limit_arg,
                                         &usage_arg,
                                         NULL };
 
-static const char *exec_name;
-
-int frame_count = 0;
-int decoded_frame_count = 0;
-aom_codec_ctx_t codec;
-AvxVideoReader *reader = NULL;
-const AvxInterface *decoder = NULL;
-const AvxVideoInfo *info = NULL;
-aom_image_t *img = NULL;
-AV1_COMMON *cm = NULL;
-struct AV1Decoder *pbi = NULL;
-
-void on_frame_decoded();
-
-void on_frame_decoded_dump(char *json) {
-#ifdef __EMSCRIPTEN__
-  EM_ASM_({
-    Module.on_frame_decoded_json($0);
-  }, json);
-#else
-  printf("%s", json);
-#endif
-}
-
-AnalyzerData analyzer_data;
-
-void init_analyzer() {
-  const int aligned_width = ALIGN_POWER_OF_TWO(info->frame_width, MI_SIZE_LOG2);
-  const int aligned_height =
-      ALIGN_POWER_OF_TWO(info->frame_height, MI_SIZE_LOG2);
-  const int mi_cols = aligned_width >> MI_SIZE_LOG2;
-  const int mi_rows = aligned_height >> MI_SIZE_LOG2;
-  const int mi_length = mi_cols * mi_rows;
-  analyzer_data.mi_grid.buffer = aom_malloc(sizeof(AnalyzerMI) * mi_length);
-  analyzer_data.mi_grid.length = mi_length;
-  analyzer_data.ready = on_frame_decoded;
-}
-
-int print_list(char *buffer, const char **list) {
-  char *buf = buffer;
-  const char **name = list;
-  while (*name != NULL) {
-    buf += sprintf(buf, "\"%s\"", *name);
-    name++;
-    if (*name != NULL) {
-      buf += sprintf(buf, ", ");
-    }
-  }
-  return buf - buffer;
-}
-
-int print_reference_frame(char *buffer) {
-  const int mi_rows = analyzer_data.mi_rows;
-  const int mi_cols = analyzer_data.mi_cols;
-  char *buf = buffer;
-  int r, c;
-  buf += sprintf(buf, "  \"%s\": [", "referenceFrame");
-  for (r = 0; r < mi_rows; ++r) {
-    buf += sprintf(buf, "[");
-    for (c = 0; c < mi_cols; ++c) {
-      AnalyzerMI *mi = &analyzer_data.mi_grid.buffer[r * mi_cols + c];
-      if (c) buf += sprintf(buf, ",");
-      buf += sprintf(buf, "[%d, %d]", mi->mv_reference_frame[0], mi->mv_reference_frame[1]);
-    }
-    buf += sprintf(buf, "]");
-    if (r < mi_rows - 1) buf += sprintf(buf, ",");
-  }
-  buf += sprintf(buf, "],\n");
-  return buf - buffer;
-}
-
-int print_motion_vectors(char *buffer) {
-  const int mi_rows = analyzer_data.mi_rows;
-  const int mi_cols = analyzer_data.mi_cols;
-  char *buf = buffer;
-  int r, c;
-  buf += sprintf(buf, "  \"%s\": [", "motionVectors");
-  for (r = 0; r < mi_rows; ++r) {
-    buf += sprintf(buf, "[");
-    for (c = 0; c < mi_cols; ++c) {
-      AnalyzerMI *mi = &analyzer_data.mi_grid.buffer[r * mi_cols + c];
-      if (c) buf += sprintf(buf, ",");
-      buf += sprintf(buf, "[%d,%d,%d,%d]", mi->mv[0].col, mi->mv[0].row, mi->mv[1].col, mi->mv[1].row);
-    }
-    buf += sprintf(buf, "]");
-    if (r < mi_rows - 1) buf += sprintf(buf, ",");
-  }
-  buf += sprintf(buf, "],\n");
-  return buf - buffer;
-}
-int print_block_info(char *buffer, const char **map, const char *name,
-                     size_t offset) {
-  const int mi_rows = analyzer_data.mi_rows;
-  const int mi_cols = analyzer_data.mi_cols;
-  char *buf = buffer;
-  int r, c, v;
-  if (map) {
-    buf += sprintf(buf, "  \"%sMap\": [", name);
-    buf += print_list(buf, map);
-    buf += sprintf(buf, "],\n");
-  }
-  buf += sprintf(buf, "  \"%s\": [", name);
-  for (r = 0; r < mi_rows; ++r) {
-    buf += sprintf(buf, "[");
-    for (c = 0; c < mi_cols; ++c) {
-      AnalyzerMI *mi = &analyzer_data.mi_grid.buffer[r * mi_cols + c];
-      v = *(((int8_t *)mi) + offset);
-      if (c) buf += sprintf(buf, ",");
-      buf += sprintf(buf, "%d", v);
-    }
-    buf += sprintf(buf, "]");
-    if (r < mi_rows - 1) buf += sprintf(buf, ",");
-  }
-  buf += sprintf(buf, "],\n");
-  return buf - buffer;
-}
-
 #if CONFIG_EXT_REFS
 const char *refs_map[] = { "INTRA_FRAME",  "LAST_FRAME",
                            "LAST2_FRAME",  "LAST3_FRAME",
@@ -322,6 +205,127 @@ const char *prediction_mode_map[] = { "DC_PRED",
                                       NULL };
 
 const char *skip_map[] = { "NO SKIP", "SKIP", NULL };
+
+
+static const char *exec_name;
+
+int frame_count = 0;
+int decoded_frame_count = 0;
+aom_codec_ctx_t codec;
+AvxVideoReader *reader = NULL;
+const AvxInterface *decoder = NULL;
+const AvxVideoInfo *info = NULL;
+aom_image_t *img = NULL;
+AV1_COMMON *cm = NULL;
+struct AV1Decoder *pbi = NULL;
+
+void on_frame_decoded();
+
+void on_frame_decoded_dump(char *json) {
+#ifdef __EMSCRIPTEN__
+  EM_ASM_({
+    Module.on_frame_decoded_json($0);
+  }, json);
+#else
+  printf("%s", json);
+#endif
+}
+
+AnalyzerData analyzer_data;
+
+void init_analyzer() {
+  const int aligned_width = ALIGN_POWER_OF_TWO(info->frame_width, MI_SIZE_LOG2);
+  const int aligned_height =
+      ALIGN_POWER_OF_TWO(info->frame_height, MI_SIZE_LOG2);
+  const int mi_cols = aligned_width >> MI_SIZE_LOG2;
+  const int mi_rows = aligned_height >> MI_SIZE_LOG2;
+  const int mi_length = mi_cols * mi_rows;
+  analyzer_data.mi_grid.buffer = aom_malloc(sizeof(AnalyzerMI) * mi_length);
+  analyzer_data.mi_grid.length = mi_length;
+  analyzer_data.ready = on_frame_decoded;
+}
+
+int print_list(char *buffer, const char **list) {
+  char *buf = buffer;
+  const char **name = list;
+  while (*name != NULL) {
+    buf += sprintf(buf, "\"%s\"", *name);
+    name++;
+    if (*name != NULL) {
+      buf += sprintf(buf, ", ");
+    }
+  }
+  return buf - buffer;
+}
+
+int print_reference_frame(char *buffer) {
+  const int mi_rows = analyzer_data.mi_rows;
+  const int mi_cols = analyzer_data.mi_cols;
+  char *buf = buffer;
+  int r, c;
+  buf += sprintf(buf, "  \"referenceFrameMap\": [");
+  buf += print_list(buf, refs_map);
+  buf += sprintf(buf, "],\n");
+  buf += sprintf(buf, "  \"%s\": [", "referenceFrame");
+  for (r = 0; r < mi_rows; ++r) {
+    buf += sprintf(buf, "[");
+    for (c = 0; c < mi_cols; ++c) {
+      AnalyzerMI *mi = &analyzer_data.mi_grid.buffer[r * mi_cols + c];
+      if (c) buf += sprintf(buf, ",");
+      buf += sprintf(buf, "[%d, %d]", mi->mv_reference_frame[0], mi->mv_reference_frame[1]);
+    }
+    buf += sprintf(buf, "]");
+    if (r < mi_rows - 1) buf += sprintf(buf, ",");
+  }
+  buf += sprintf(buf, "],\n");
+  return buf - buffer;
+}
+
+int print_motion_vectors(char *buffer) {
+  const int mi_rows = analyzer_data.mi_rows;
+  const int mi_cols = analyzer_data.mi_cols;
+  char *buf = buffer;
+  int r, c;
+  buf += sprintf(buf, "  \"%s\": [", "motionVectors");
+  for (r = 0; r < mi_rows; ++r) {
+    buf += sprintf(buf, "[");
+    for (c = 0; c < mi_cols; ++c) {
+      AnalyzerMI *mi = &analyzer_data.mi_grid.buffer[r * mi_cols + c];
+      if (c) buf += sprintf(buf, ",");
+      buf += sprintf(buf, "[%d,%d,%d,%d]", mi->mv[0].col, mi->mv[0].row, mi->mv[1].col, mi->mv[1].row);
+    }
+    buf += sprintf(buf, "]");
+    if (r < mi_rows - 1) buf += sprintf(buf, ",");
+  }
+  buf += sprintf(buf, "],\n");
+  return buf - buffer;
+}
+int print_block_info(char *buffer, const char **map, const char *name,
+                     size_t offset) {
+  const int mi_rows = analyzer_data.mi_rows;
+  const int mi_cols = analyzer_data.mi_cols;
+  char *buf = buffer;
+  int r, c, v;
+  if (map) {
+    buf += sprintf(buf, "  \"%sMap\": [", name);
+    buf += print_list(buf, map);
+    buf += sprintf(buf, "],\n");
+  }
+  buf += sprintf(buf, "  \"%s\": [", name);
+  for (r = 0; r < mi_rows; ++r) {
+    buf += sprintf(buf, "[");
+    for (c = 0; c < mi_cols; ++c) {
+      AnalyzerMI *mi = &analyzer_data.mi_grid.buffer[r * mi_cols + c];
+      v = *(((int8_t *)mi) + offset);
+      if (c) buf += sprintf(buf, ",");
+      buf += sprintf(buf, "%d", v);
+    }
+    buf += sprintf(buf, "]");
+    if (r < mi_rows - 1) buf += sprintf(buf, ",");
+  }
+  buf += sprintf(buf, "],\n");
+  return buf - buffer;
+}
 
 #if CONFIG_ACCOUNTING
 int print_accounting(char *buffer) {
@@ -440,8 +444,14 @@ int read_frame() {
   FrameWorkerData *const frame_worker_data = (FrameWorkerData *)worker->data1;
   cm = &frame_worker_data->pbi->common;
   pbi = frame_worker_data->pbi;
+#if CONFIG_ACCOUNTING
+  pbi->acct_enabled = layers & ACCOUNTING_LAYER;
+#endif
   return EXIT_SUCCESS;
 }
+
+EMSCRIPTEN_KEEPALIVE
+int get_bit_depth() { return img->bit_depth; }
 
 EMSCRIPTEN_KEEPALIVE
 unsigned char *get_plane(int plane) { return img->planes[plane]; }

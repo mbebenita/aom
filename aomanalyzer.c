@@ -347,8 +347,7 @@ int print_accounting(char *buffer) {
   AccountingSymbol *sym;
   for (i = 0; i < num_syms; i++) {
     sym = &accounting->syms.syms[i];
-    if (memcmp(&context, &sym->context, sizeof(AccountingSymbolContext)) ==
-        -1) {
+    if (memcmp(&context, &sym->context, sizeof(AccountingSymbolContext)) != 0) {
       buf += sprintf(buf, "[%d,%d]", sym->context.x, sym->context.y);
     } else {
       buf += sprintf(buf, "[%d,%d,%d]", sym->id, sym->bits, sym->samples);

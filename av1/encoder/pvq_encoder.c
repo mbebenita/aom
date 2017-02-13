@@ -40,8 +40,8 @@ static void aom_encode_pvq_codeword(aom_writer *w, od_pvq_codeword_ctx *adapt,
 }
 
 /* Computes 1/sqrt(i) using a table for small values. */
-static double od_rsqrt_table(int i) {
-  static double table[16] = {
+static float od_rsqrt_table(int i) {
+  static float table[16] = {
     1.000000, 0.707107, 0.577350, 0.500000,
     0.447214, 0.408248, 0.377964, 0.353553,
     0.333333, 0.316228, 0.301511, 0.288675,
@@ -52,22 +52,22 @@ static double od_rsqrt_table(int i) {
 
 /*Computes 1/sqrt(start+2*i+1) using a lookup table containing the results
    where 0 <= i < table_size.*/
-static double od_custom_rsqrt_dynamic_table(const double* table,
- const int table_size, const double start, const int i) {
+static float od_custom_rsqrt_dynamic_table(const float* table,
+ const int table_size, const float start, const int i) {
   if (i < table_size) return table[i];
   else return od_rsqrt_table((int)(start + 2*i + 1));
 }
 
 /*Fills tables used in od_custom_rsqrt_dynamic_table for a given start.*/
-static void od_fill_dynamic_rsqrt_table(double *table, const int table_size,
- const double start) {
+static void od_fill_dynamic_rsqrt_table(float *table, const int table_size,
+ const float start) {
   int i;
   for (i = 0; i < table_size; i++)
     table[i] = od_rsqrt_table((int)(start + 2*i + 1));
 }
 
 /** Find the codepoint on the given PSphere closest to the desired
- * vector. Double-precision PVQ search just to make sure our tests
+ * vector. float-precision PVQ search just to make sure our tests
  * aren't limited by numerical accuracy.
  *
  * @param [in]      xcoeff  input vector to quantize (x in the math doc)
@@ -81,19 +81,20 @@ static void od_fill_dynamic_rsqrt_table(double *table, const int table_size,
  *                          reuse for the search (or 0 for a new search)
  * @return                  cosine distance between x and y (between 0 and 1)
  */
-static double pvq_search_rdo_double(const od_val16 *xcoeff, int n, int k,
- od_coeff *ypulse, double g2, double pvq_norm_lambda, int prev_k) {
+static float pvq_search_rdo_float(const od_val16 *xcoeff, int n, int k,
+ od_coeff *ypulse, float g2, float pvq_norm_lambda, int prev_k) {
+
   int i, j;
-  double xy;
-  double yy;
+  float xy;
+  float yy;
   /* TODO - This blows our 8kB stack space budget and should be fixed when
    converting PVQ to fixed point. */
-  double x[MAXN];
-  double xx;
-  double lambda;
-  double norm_1;
+  float x[MAXN];
+  float xx;
+  float lambda;
+  float norm_1;
   int rdo_pulses;
-  double delta_rate;
+  float delta_rate;
   xx = xy = yy = 0;
   for (j = 0; j < n; j++) {
     x[j] = fabs((float)xcoeff[j]);
@@ -113,13 +114,13 @@ static double pvq_search_rdo_double(const od_val16 *xcoeff, int n, int k,
     }
   }
   else if (k > 2) {
-    double l1_norm;
-    double l1_inv;
+    float l1_norm;
+    float l1_inv;
     l1_norm = 0;
     for (j = 0; j < n; j++) l1_norm += x[j];
     l1_inv = 1./OD_MAXF(l1_norm, 1e-100);
     for (j = 0; j < n; j++) {
-      double tmp;
+      float tmp;
       tmp = k*x[j]*l1_inv;
       ypulse[j] = OD_MAXI(0, (int)floor(tmp));
       xy += x[j]*ypulse[j];
@@ -139,14 +140,14 @@ static double pvq_search_rdo_double(const od_val16 *xcoeff, int n, int k,
   /* Search one pulse at a time */
   for (; i < k - rdo_pulses; i++) {
     int pos;
-    double best_xy;
-    double best_yy;
+    float best_xy;
+    float best_yy;
     pos = 0;
     best_xy = -10;
     best_yy = 1;
     for (j = 0; j < n; j++) {
-      double tmp_xy;
-      double tmp_yy;
+      float tmp_xy;
+      float tmp_yy;
       tmp_xy = xy + x[j];
       tmp_yy = yy + 2*ypulse[j] + 1;
       tmp_xy *= tmp_xy;
@@ -165,10 +166,10 @@ static double pvq_search_rdo_double(const od_val16 *xcoeff, int n, int k,
      lambda*rate term. Note that since x and y aren't normalized here,
      we need to divide by sqrt(x^2)*sqrt(y^2). */
   for (; i < k; i++) {
-    double rsqrt_table[4];
+    float rsqrt_table[4];
     int rsqrt_table_size = 4;
     int pos;
-    double best_cost;
+    float best_cost;
     pos = 0;
     best_cost = -1e5;
     /*Fill the small rsqrt lookup table with inputs relative to yy.
@@ -176,8 +177,8 @@ static double pvq_search_rdo_double(const od_val16 *xcoeff, int n, int k,
        rsqrt(yy + 1), rsqrt(yy + 2 + 1) .. rsqrt(yy + 2*(n-1) + 1).*/
     od_fill_dynamic_rsqrt_table(rsqrt_table, rsqrt_table_size, yy);
     for (j = 0; j < n; j++) {
-      double tmp_xy;
-      double tmp_yy;
+      float tmp_xy;
+      float tmp_yy;
       tmp_xy = xy + x[j];
       /*Calculate rsqrt(yy + 2*ypulse[j] + 1) using an optimized method.*/
       tmp_yy = od_custom_rsqrt_dynamic_table(rsqrt_table, rsqrt_table_size,
@@ -219,19 +220,19 @@ int od_vector_is_null(const od_coeff *x, int len) {
   return 1;
 }
 
-static double od_pvq_rate(int qg, int icgr, int theta, int ts,
+static float od_pvq_rate(int qg, int icgr, int theta, int ts,
  const od_adapt_ctx *adapt, const od_coeff *y0, int k, int n,
  int is_keyframe, int pli, int speed) {
-  double rate;
+  float rate;
   if (k == 0) rate = 0;
   else if (speed > 0) {
     int i;
     int sum;
-    double f;
+    float f;
     /* Compute "center of mass" of the pulse vector. */
     sum = 0;
     for (i = 0; i < n - (theta != -1); i++) sum += i*abs(y0[i]);
-    f = sum/(double)(k*n);
+    f = sum/(float)(k*n);
     /* Estimates the number of bits it will cost to encode K pulses in
        N dimensions based on hand-tuned fit for bitrate vs K, N and
        "center of mass". */
@@ -319,9 +320,9 @@ int items_compare(pvq_search_item *a, pvq_search_item *b) {
 */
 static int pvq_theta(od_coeff *out, const od_coeff *x0, const od_coeff *r0,
  int n, int q0, od_coeff *y, int *itheta, int *max_theta, int *vk,
- od_val16 beta, double *skip_diff, int robust, int is_keyframe, int pli,
+ od_val16 beta, float *skip_diff, int robust, int is_keyframe, int pli,
  const od_adapt_ctx *adapt, const int16_t *qm,
- const int16_t *qm_inv, double pvq_norm_lambda, int speed) {
+ const int16_t *qm_inv, float pvq_norm_lambda, int speed) {
   od_val32 g;
   od_val32 gr;
   od_coeff y_tmp[MAXN];
@@ -334,25 +335,25 @@ static int pvq_theta(od_coeff *out, const od_coeff *x0, const od_coeff *r0,
   int icgr;
   int qg;
   /* Best RDO cost (D + lamdba*R) so far. */
-  double best_cost;
-  double dist0;
+  float best_cost;
+  float dist0;
   /* Distortion (D) that corresponds to the best RDO cost. */
-  double best_dist;
-  double dist;
+  float best_dist;
+  float dist;
   /* Sign of Householder reflection. */
   int s;
   /* Dimension on which Householder reflects. */
   int m;
   od_val32 theta;
-  double corr;
+  float corr;
   int best_k;
   od_val32 best_qtheta;
   od_val32 gain_offset;
   int noref;
-  double skip_dist;
+  float skip_dist;
   int cfl_enabled;
   int skip;
-  double gain_weight;
+  float gain_weight;
   od_val16 x16[MAXN];
   od_val16 r16[MAXN];
   int xshift;
@@ -378,9 +379,9 @@ static int pvq_theta(od_coeff *out, const od_coeff *x0, const od_coeff *r0,
 #if defined(OD_FLOAT_PVQ)
     /*This is slightly different from the original float PVQ code,
        where the qm was applied in the accumulation in od_pvq_compute_gain and
-       the vectors were od_coeffs, not od_val16 (i.e. double).*/
-    x16[i] = x0[i]*(double)qm[i]*OD_QM_SCALE_1;
-    r16[i] = r0[i]*(double)qm[i]*OD_QM_SCALE_1;
+       the vectors were od_coeffs, not od_val16 (i.e. float).*/
+    x16[i] = x0[i]*(float)qm[i]*OD_QM_SCALE_1;
+    r16[i] = r0[i]*(float)qm[i]*OD_QM_SCALE_1;
 #else
     x16[i] = OD_SHR_ROUND(x0[i]*qm[i], OD_QM_SHIFT + xshift);
     r16[i] = OD_SHR_ROUND(r0[i]*qm[i], OD_QM_SHIFT + rshift);
@@ -413,12 +414,12 @@ static int pvq_theta(od_coeff *out, const od_coeff *x0, const od_coeff *r0,
   best_qtheta = 0;
   m = 0;
   s = 1;
-  corr = corr/(1e-100 + g*(double)gr/OD_SHL(1, xshift + rshift));
+  corr = corr/(1e-100 + g*(float)gr/OD_SHL(1, xshift + rshift));
   corr = OD_MAXF(OD_MINF(corr, 1.), -1.);
   if (is_keyframe) skip_dist = gain_weight*cg*cg*OD_CGAIN_SCALE_2;
   else {
     skip_dist = gain_weight*(cg - cgr)*(cg - cgr)
-     + cgr*(double)cg*(2 - 2*corr);
+     + cgr*(float)cg*(2 - 2*corr);
     skip_dist *= OD_CGAIN_SCALE_2;
   }
   if (!is_keyframe) {
@@ -427,7 +428,7 @@ static int pvq_theta(od_coeff *out, const od_coeff *x0, const od_coeff *r0,
     scgr = OD_MAXF(0,gain_offset);
     if (icgr == 0) {
       best_dist = gain_weight*(cg - scgr)*(cg - scgr)
-       + scgr*(double)cg*(2 - 2*corr);
+       + scgr*(float)cg*(2 - 2*corr);
       best_dist *= OD_CGAIN_SCALE_2;
     }
     best_cost = best_dist + pvq_norm_lambda*od_pvq_rate(0, icgr, 0, 0, adapt,
@@ -445,7 +446,7 @@ static int pvq_theta(od_coeff *out, const od_coeff *x0, const od_coeff *r0,
     pvq_search_item items[MAX_PVQ_ITEMS];
     int idx;
     int nitems;
-    double cos_dist;
+    float cos_dist;
     idx = 0;
     gain_bound = OD_SHR(cg - gain_offset, OD_CGAIN_SHIFT);
     /* Perform theta search only if prediction is useful. */
@@ -495,9 +496,9 @@ static int pvq_theta(od_coeff *out, const od_coeff *x0, const od_coeff *r0,
       int j;
       od_val32 qcg;
       int ts;
-      double cost;
-      double dist_theta;
-      double sin_prod;
+      float cost;
+      float dist_theta;
+      float sin_prod;
       od_val32 qtheta;
       /* Quantized companded gain */
       qcg = items[idx].qcg;
@@ -511,7 +512,7 @@ static int pvq_theta(od_coeff *out, const od_coeff *x0, const od_coeff *r0,
       /* Compute the minimal possible distortion by not taking the PVQ
          cos_dist into account. */
       dist_theta = 2 - 2.*od_pvq_cos(theta - qtheta)*OD_TRIG_SCALE_1;
-      dist = gain_weight*(qcg - cg)*(qcg - cg) + qcg*(double)cg*dist_theta;
+      dist = gain_weight*(qcg - cg)*(qcg - cg) + qcg*(float)cg*dist_theta;
       dist *= OD_CGAIN_SCALE_2;
       /* If we have no hope of beating skip (including a 1-bit worst-case
          penalty), stop now. */
@@ -526,14 +527,14 @@ static int pvq_theta(od_coeff *out, const od_coeff *x0, const od_coeff *r0,
         OD_CLEAR(y_tmp, n-1);
       }
       else if (k != prev_k) {
-        cos_dist = pvq_search_rdo_double(xr, n - 1, k, y_tmp,
-         qcg*(double)cg*sin_prod*OD_CGAIN_SCALE_2, pvq_norm_lambda, prev_k);
+        cos_dist = pvq_search_rdo_float(xr, n - 1, k, y_tmp,
+         qcg*(float)cg*sin_prod*OD_CGAIN_SCALE_2, pvq_norm_lambda, prev_k);
       }
       prev_k = k;
       /* See Jmspeex' Journal of Dubious Theoretical Results. */
       dist_theta = 2 - 2.*od_pvq_cos(theta - qtheta)*OD_TRIG_SCALE_1
        + sin_prod*(2 - 2*cos_dist);
-      dist = gain_weight*(qcg - cg)*(qcg - cg) + qcg*(double)cg*dist_theta;
+      dist = gain_weight*(qcg - cg)*(qcg - cg) + qcg*(float)cg*dist_theta;
       dist *= OD_CGAIN_SCALE_2;
       /* Do approximate RDO. */
       cost = dist + pvq_norm_lambda*od_pvq_rate(i, icgr, j, ts, adapt, y_tmp,
@@ -563,8 +564,8 @@ static int pvq_theta(od_coeff *out, const od_coeff *x0, const od_coeff *r0,
     prev_k = 0;
     /* Search for the best gain (haven't determined reasonable range yet). */
     for (i = OD_MAXI(1, gain_bound); i <= gain_bound + 1; i++) {
-      double cos_dist;
-      double cost;
+      float cos_dist;
+      float cost;
       od_val32 qcg;
       qcg = OD_SHL(i, OD_CGAIN_SHIFT);
       k = od_pvq_compute_k(qcg, -1, -1, 1, n, beta, robust || is_keyframe);
@@ -573,12 +574,12 @@ static int pvq_theta(od_coeff *out, const od_coeff *x0, const od_coeff *r0,
       dist = gain_weight*(qcg - cg)*(qcg - cg);
       dist *= OD_CGAIN_SCALE_2;
       if (dist > dist0 && k != 0) continue;
-      cos_dist = pvq_search_rdo_double(x16, n, k, y_tmp,
-       qcg*(double)cg*OD_CGAIN_SCALE_2, pvq_norm_lambda, prev_k);
+      cos_dist = pvq_search_rdo_float(x16, n, k, y_tmp,
+       qcg*(float)cg*OD_CGAIN_SCALE_2, pvq_norm_lambda, prev_k);
       prev_k = k;
       /* See Jmspeex' Journal of Dubious Theoretical Results. */
       dist = gain_weight*(qcg - cg)*(qcg - cg)
-       + qcg*(double)cg*(2 - 2*cos_dist);
+       + qcg*(float)cg*(2 - 2*cos_dist);
       dist *= OD_CGAIN_SCALE_2;
       /* Do approximate RDO. */
       cost = dist + pvq_norm_lambda*od_pvq_rate(i, 0, -1, 0, adapt, y_tmp, k,
@@ -714,12 +715,12 @@ void pvq_encode_partition(aom_writer *w,
  * @param [in] pvq_norm_lambda enc->pvq_norm_lambda for quantized RDO
  * @retval quantized value
  */
-int od_rdo_quant(od_coeff x, int q, double delta0, double pvq_norm_lambda) {
+int od_rdo_quant(od_coeff x, int q, float delta0, float pvq_norm_lambda) {
   int n;
   /* Optimal quantization threshold is 1/2 + lambda*delta_rate/2. See
      Jmspeex' Journal of Dubious Theoretical Results for details. */
   n = OD_DIV_R0(abs(x), q);
-  if ((double)abs(x)/q < (double)n/2 + pvq_norm_lambda*delta0/(2*n)) {
+  if ((float)abs(x)/q < (float)n/2 + pvq_norm_lambda*delta0/(2*n)) {
     return 0;
   }
   else {
@@ -805,7 +806,7 @@ PVQ_SKIP_TYPE od_pvq_encode(daala_enc_ctx *enc,
   const int *off;
   int size[PVQ_MAX_PARTITIONS];
   generic_encoder *model;
-  double skip_diff;
+  float skip_diff;
   int tell;
   uint16_t *skip_cdf;
   od_rollback_buffer buf;
@@ -816,7 +817,7 @@ PVQ_SKIP_TYPE od_pvq_encode(daala_enc_ctx *enc,
   int skip_dir;
   int skip_theta_value;
   const unsigned char *pvq_qm;
-  double dc_rate;
+  float dc_rate;
   int use_masking;
   PVQ_SKIP_TYPE ac_dc_coded;
 #if !OD_SIGNAL_Q_SCALING
@@ -855,8 +856,8 @@ PVQ_SKIP_TYPE od_pvq_encode(daala_enc_ctx *enc,
     /*Compute the dot-product of the first band of chroma with the luma ref.*/
     for (i = off[0]; i < off[1]; i++) {
 #if defined(OD_FLOAT_PVQ)
-      xy += ref[i]*(double)qm[i]*OD_QM_SCALE_1*
-       (double)in[i]*(double)qm[i]*OD_QM_SCALE_1;
+      xy += ref[i]*(float)qm[i]*OD_QM_SCALE_1*
+       (float)in[i]*(float)qm[i]*OD_QM_SCALE_1;
 #else
       od_val32 rq;
       od_val32 inq;
@@ -896,8 +897,8 @@ PVQ_SKIP_TYPE od_pvq_encode(daala_enc_ctx *enc,
       int tell2;
       od_rollback_buffer dc_buf;
 
-      dc_rate = -OD_LOG2((double)(skip_cdf[3] - skip_cdf[2])/
-       (double)(skip_cdf[2] - skip_cdf[1]));
+      dc_rate = -OD_LOG2((float)(skip_cdf[3] - skip_cdf[2])/
+       (float)(skip_cdf[2] - skip_cdf[1]));
       dc_rate += 1;
 
 #if CONFIG_DAALA_EC
@@ -988,14 +989,14 @@ PVQ_SKIP_TYPE od_pvq_encode(daala_enc_ctx *enc,
   /* Account for the rate of skipping the AC, based on the same DC decision
      we made when trying to not skip AC. */
   {
-    double skip_rate;
+    float skip_rate;
     if (out[0] != 0) {
       skip_rate = -OD_LOG2((skip_cdf[1] - skip_cdf[0])/
-     (double)skip_cdf[3]);
+     (float)skip_cdf[3]);
     }
     else {
       skip_rate = -OD_LOG2(skip_cdf[0]/
-     (double)skip_cdf[3]);
+     (float)skip_cdf[3]);
     }
     tell -= (int)floor(.5+8*skip_rate);
   }
@@ -1010,8 +1011,8 @@ PVQ_SKIP_TYPE od_pvq_encode(daala_enc_ctx *enc,
         int tell2;
         od_rollback_buffer dc_buf;
 
-        dc_rate = -OD_LOG2((double)(skip_cdf[1] - skip_cdf[0])/
-         (double)skip_cdf[0]);
+        dc_rate = -OD_LOG2((float)(skip_cdf[1] - skip_cdf[0])/
+         (float)skip_cdf[0]);
         dc_rate += 1;
 
 #if CONFIG_DAALA_EC

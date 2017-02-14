@@ -101,7 +101,7 @@ static void od_fill_dynamic_rsqrt_table(float *table, const int table_size,
  *                          reuse for the search (or 0 for a new search)
  * @return                  cosine distance between x and y (between 0 and 1)
  */
-static float pvq_search_rdo_float(const od_val16 *xcoeff, int n, int k,
+static float pvq_search_rdo_float_simd(const od_val16 *xcoeff, int n, int k,
     od_coeff *ypulse, float g2, float pvq_norm_lambda, int prev_k) {
   int i, j;
   int pulses_left;
@@ -286,7 +286,7 @@ static float pvq_search_rdo_float(const od_val16 *xcoeff, int n, int k,
  *                          reuse for the search (or 0 for a new search)
  * @return                  cosine distance between x and y (between 0 and 1)
  */
-static float pvq_search_rdo_float2(const od_val16 *xcoeff, int n, int k,
+static float pvq_search_rdo_float(const od_val16 *xcoeff, int n, int k,
  od_coeff *ypulse, float g2, float pvq_norm_lambda, int prev_k) {
 
   // printf("xcoeff = %p, ypulse = %p, n = %4d, k = %4d, g2 = %10f, pvq_norm_lambda = %10f, prev_k = %4d\n", xcoeff, ypulse, n, k, g2, pvq_norm_lambda, prev_k);
@@ -302,6 +302,9 @@ static float pvq_search_rdo_float2(const od_val16 *xcoeff, int n, int k,
   float norm_1;
   int rdo_pulses;
   float delta_rate;
+
+  g2 = 0, pvq_norm_lambda = 0, prev_k = 0;
+
   xx = xy = yy = 0;
   for (j = 0; j < n; j++) {
     x[j] = fabs((float)xcoeff[j]);

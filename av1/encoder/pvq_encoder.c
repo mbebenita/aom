@@ -28,6 +28,7 @@
 #include "av1/encoder/pvq_encoder.h"
 
 #include <emmintrin.h>
+#include <alloca.h>
 
 #define OD_PVQ_RATE_APPROX (0)
 /*Shift to ensure that the upper bound (i.e. for the max blocksize) of the

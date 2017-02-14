@@ -27,6 +27,8 @@
 #include "av1/encoder/encodemb.h"
 #include "av1/encoder/pvq_encoder.h"
 
+#include <emmintrin.h>
+
 #define OD_PVQ_RATE_APPROX (0)
 /*Shift to ensure that the upper bound (i.e. for the max blocksize) of the
    dot-product of the 1st band of chroma with the luma ref doesn't overflow.*/
@@ -66,6 +68,216 @@ static void od_fill_dynamic_rsqrt_table(float *table, const int table_size,
     table[i] = od_rsqrt_table((int)(start + 2*i + 1));
 }
 
+#define VARDECL(type, var) type *var
+#define ALLOC(var, size, type) var = ((type*)alloca(sizeof(type)*(size)))
+#define SAVE_STACK
+#define RESTORE_STACK
+#define ALLOC_STACK
+#define ALLOC_NONE 0
+#define EPSILON 1e-15f
+
+#define ADD16(a,b) ((a)+(b))
+#define SUB16(a,b) ((a)-(b))
+#define ADD32(a,b) ((a)+(b))
+#define SUB32(a,b) ((a)-(b))
+#define EXTEND32(x) (x)
+#define MAC16_16(c,a,b) ((c)+(od_val32)(a)*(od_val32)(b))
+#define QCONST16(x,bits) (x)
+#define QCONST32(x,bits) (x)
+
+// static float pvq_search_rdo_float_c(const od_val16 *xcoeff, int n, int k,
+//  od_coeff *ypulse, float g2, float pvq_norm_lambda, int prev_k) {
+
+static float pvq_search_rdo_float(const od_val16 *_X, int N, int K, od_coeff *iy, float g2, float pvq_norm_lambda, int prev_k)
+{
+   int i, j;
+   int pulsesLeft;
+
+   /* TODO - This blows our 8kB stack space budget and should be fixed when
+   converting PVQ to fixed point. */
+   float x[MAXN];
+   float xx, xy, yy;
+   VARDECL(float, y);
+   VARDECL(float, X);
+   VARDECL(float, signy);
+   __m128 signmask;
+   __m128 sums;
+   __m128i fours;
+   SAVE_STACK;
+   (void)g2;
+   (void)pvq_norm_lambda;
+   (void)prev_k;
+  xx = xy = yy = 0;
+  for (j = 0; j < N; j++) {
+    x[j] = fabs((float)_X[j]);
+    xx += x[j]*x[j];
+  }
+
+   // (void)arch;
+   /* All bits set to zero, except for the sign bit. */
+   signmask = _mm_set_ps1(-0.f);
+   fours = _mm_set_epi32(4, 4, 4, 4);
+   ALLOC(y, N+3, float);
+   ALLOC(X, N+3, float);
+   ALLOC(signy, N+3, float);
+
+   for (j=0;j<N;j++) {
+     X[j] = _X[j];
+   }
+   // OD_COPY(X, _X, N);
+
+   X[N] = X[N+1] = X[N+2] = 0;
+   sums = _mm_setzero_ps();
+   for (j=0;j<N;j+=4)
+   {
+      __m128 x4, s4;
+      x4 = _mm_loadu_ps(&X[j]);
+      s4 = _mm_cmplt_ps(x4, _mm_setzero_ps());
+      /* Get rid of the sign */
+      x4 = _mm_andnot_ps(signmask, x4);
+      sums = _mm_add_ps(sums, x4);
+      /* Clear y and iy in case we don't do the projection. */
+      _mm_storeu_ps(&y[j], _mm_setzero_ps());
+      _mm_storeu_si128((__m128i*)&iy[j], _mm_setzero_si128());
+      _mm_storeu_ps(&X[j], x4);
+      _mm_storeu_ps(&signy[j], s4);
+   }
+   sums = _mm_add_ps(sums, _mm_shuffle_ps(sums, sums, _MM_SHUFFLE(1, 0, 3, 2)));
+   sums = _mm_add_ps(sums, _mm_shuffle_ps(sums, sums, _MM_SHUFFLE(2, 3, 0, 1)));
+
+   xy = yy = 0;
+
+   pulsesLeft = K;
+
+   /* Do a pre-search by projecting on the pyramid */
+   if (K > (N>>1))
+   {
+      __m128i pulses_sum;
+      __m128 yy4, xy4;
+      __m128 rcp4;
+      float sum = _mm_cvtss_f32(sums);
+      /* If X is too small, just replace it with a pulse at 0 */
+      /* Prevents infinities and NaNs from causing too many pulses
+         to be allocated. 64 is an approximation of infinity here. */
+      if (!(sum > EPSILON && sum < 64))
+      {
+         X[0] = QCONST16(1.f,14);
+         j=1; do
+            X[j]=0;
+         while (++j<N);
+         sums = _mm_set_ps1(1.f);
+      }
+      /* Using K+e with e < 1 guarantees we cannot get more than K pulses. */
+      rcp4 = _mm_mul_ps(_mm_set_ps1((float)(K+.8)), _mm_rcp_ps(sums));
+      xy4 = yy4 = _mm_setzero_ps();
+      pulses_sum = _mm_setzero_si128();
+      for (j=0;j<N;j+=4)
+      {
+         __m128 rx4, x4, y4;
+         __m128i iy4;
+         x4 = _mm_loadu_ps(&X[j]);
+         rx4 = _mm_mul_ps(x4, rcp4);
+         iy4 = _mm_cvttps_epi32(rx4);
+         pulses_sum = _mm_add_epi32(pulses_sum, iy4);
+         _mm_storeu_si128((__m128i*)&iy[j], iy4);
+         y4 = _mm_cvtepi32_ps(iy4);
+         xy4 = _mm_add_ps(xy4, _mm_mul_ps(x4, y4));
+         yy4 = _mm_add_ps(yy4, _mm_mul_ps(y4, y4));
+         /* double the y[] vector so we don't have to do it in the search loop. */
+         _mm_storeu_ps(&y[j], _mm_add_ps(y4, y4));
+      }
+      pulses_sum = _mm_add_epi32(pulses_sum, _mm_shuffle_epi32(pulses_sum, _MM_SHUFFLE(1, 0, 3, 2)));
+      pulses_sum = _mm_add_epi32(pulses_sum, _mm_shuffle_epi32(pulses_sum, _MM_SHUFFLE(2, 3, 0, 1)));
+      pulsesLeft -= _mm_cvtsi128_si32(pulses_sum);
+      xy4 = _mm_add_ps(xy4, _mm_shuffle_ps(xy4, xy4, _MM_SHUFFLE(1, 0, 3, 2)));
+      xy4 = _mm_add_ps(xy4, _mm_shuffle_ps(xy4, xy4, _MM_SHUFFLE(2, 3, 0, 1)));
+      xy = _mm_cvtss_f32(xy4);
+      yy4 = _mm_add_ps(yy4, _mm_shuffle_ps(yy4, yy4, _MM_SHUFFLE(1, 0, 3, 2)));
+      yy4 = _mm_add_ps(yy4, _mm_shuffle_ps(yy4, yy4, _MM_SHUFFLE(2, 3, 0, 1)));
+      yy = _mm_cvtss_f32(yy4);
+   }
+   X[N] = X[N+1] = X[N+2] = -100;
+   y[N] = y[N+1] = y[N+2] = 100;
+   // celt_assert2(pulsesLeft>=0, "Allocated too many pulses in the quick pass");
+
+   /* This should never happen, but just in case it does (e.g. on silence)
+      we fill the first bin with pulses. */
+   if (pulsesLeft > N+3)
+   {
+      od_val16 tmp = (od_val16)pulsesLeft;
+      yy = MAC16_16(yy, tmp, tmp);
+      yy = MAC16_16(yy, tmp, y[0]);
+      iy[0] += pulsesLeft;
+      pulsesLeft=0;
+   }
+
+   for (i=0;i<pulsesLeft;i++)
+   {
+      int best_id;
+      __m128 xy4, yy4;
+      __m128 max, max2;
+      __m128i count;
+      __m128i pos;
+      best_id = 0;
+      /* The squared magnitude term gets added anyway, so we might as well
+         add it outside the loop */
+      yy = ADD16(yy, 1);
+      xy4 = _mm_load1_ps(&xy);
+      yy4 = _mm_load1_ps(&yy);
+      max = _mm_setzero_ps();
+      pos = _mm_setzero_si128();
+      count = _mm_set_epi32(3, 2, 1, 0);
+      for (j=0;j<N;j+=4)
+      {
+         __m128 x4, y4, r4;
+         x4 = _mm_loadu_ps(&X[j]);
+         y4 = _mm_loadu_ps(&y[j]);
+         x4 = _mm_add_ps(x4, xy4);
+         y4 = _mm_add_ps(y4, yy4);
+         y4 = _mm_rsqrt_ps(y4);
+         r4 = _mm_mul_ps(x4, y4);
+         /* Update the index of the max. */
+         pos = _mm_max_epi16(pos, _mm_and_si128(count, _mm_castps_si128(_mm_cmpgt_ps(r4, max))));
+         /* Update the max. */
+         max = _mm_max_ps(max, r4);
+         /* Update the indices (+4) */
+         count = _mm_add_epi32(count, fours);
+      }
+      /* Horizontal max */
+      max2 = _mm_max_ps(max, _mm_shuffle_ps(max, max, _MM_SHUFFLE(1, 0, 3, 2)));
+      max2 = _mm_max_ps(max2, _mm_shuffle_ps(max2, max2, _MM_SHUFFLE(2, 3, 0, 1)));
+      /* Now that max2 contains the max at all positions, look at which value(s) of the
+         partial max is equal to the global max. */
+      pos = _mm_and_si128(pos, _mm_castps_si128(_mm_cmpeq_ps(max, max2)));
+      pos = _mm_max_epi16(pos, _mm_unpackhi_epi64(pos, pos));
+      pos = _mm_max_epi16(pos, _mm_shufflelo_epi16(pos, _MM_SHUFFLE(1, 0, 3, 2)));
+      best_id = _mm_cvtsi128_si32(pos);
+
+      /* Updating the sums of the new pulse(s) */
+      xy = ADD32(xy, EXTEND32(X[best_id]));
+      /* We're multiplying y[j] by two so we don't have to do it here */
+      yy = ADD16(yy, y[best_id]);
+
+      /* Only now that we've made the final choice, update y/iy */
+      /* Multiplying y[j] by 2 so we don't have to do it everywhere else */
+      y[best_id] += 2;
+      iy[best_id]++;
+   }
+
+   /* Put the original sign back */
+   for (j=0;j<N;j+=4)
+   {
+      __m128i y4;
+      __m128i s4;
+      y4 = _mm_loadu_si128((__m128i*)&iy[j]);
+      s4 = _mm_castps_si128(_mm_loadu_ps(&signy[j]));
+      y4 = _mm_xor_si128(_mm_add_epi32(y4, s4), s4);
+      _mm_storeu_si128((__m128i*)&iy[j], y4);
+   }
+   RESTORE_STACK;
+   return xy/(1e-100 + sqrtf(xx*yy));
+}
+
 /** Find the codepoint on the given PSphere closest to the desired
  * vector. float-precision PVQ search just to make sure our tests
  * aren't limited by numerical accuracy.
@@ -81,8 +293,10 @@ static void od_fill_dynamic_rsqrt_table(float *table, const int table_size,
  *                          reuse for the search (or 0 for a new search)
  * @return                  cosine distance between x and y (between 0 and 1)
  */
-static float pvq_search_rdo_float(const od_val16 *xcoeff, int n, int k,
+static float pvq_search_rdo_float_old(const od_val16 *xcoeff, int n, int k,
  od_coeff *ypulse, float g2, float pvq_norm_lambda, int prev_k) {
+
+  // printf("xcoeff = %p, ypulse = %p, n = %4d, k = %4d, g2 = %10f, pvq_norm_lambda = %10f, prev_k = %4d\n", xcoeff, ypulse, n, k, g2, pvq_norm_lambda, prev_k);
 
   int i, j;
   float xy;
@@ -100,7 +314,7 @@ static float pvq_search_rdo_float(const od_val16 *xcoeff, int n, int k,
     x[j] = fabs((float)xcoeff[j]);
     xx += x[j]*x[j];
   }
-  norm_1 = 1./sqrt(1e-30 + xx);
+  norm_1 = 1./sqrtf(1e-30 + xx);
   lambda = pvq_norm_lambda/(1e-30 + g2);
   i = 0;
   if (prev_k > 0 && prev_k <= k) {
@@ -122,7 +336,7 @@ static float pvq_search_rdo_float(const od_val16 *xcoeff, int n, int k,
     for (j = 0; j < n; j++) {
       float tmp;
       tmp = k*x[j]*l1_inv;
-      ypulse[j] = OD_MAXI(0, (int)floor(tmp));
+      ypulse[j] = OD_MAXI(0, (int)floorf(tmp));
       xy += x[j]*ypulse[j];
       yy += ypulse[j]*ypulse[j];
       i += ypulse[j];
@@ -183,7 +397,7 @@ static float pvq_search_rdo_float(const od_val16 *xcoeff, int n, int k,
       /*Calculate rsqrt(yy + 2*ypulse[j] + 1) using an optimized method.*/
       tmp_yy = od_custom_rsqrt_dynamic_table(rsqrt_table, rsqrt_table_size,
        yy, ypulse[j]);
-      tmp_xy = 2*tmp_xy*norm_1*tmp_yy - lambda*j*delta_rate;
+      tmp_xy = 2*norm_1*tmp_xy*tmp_yy - lambda*delta_rate*j;
       if (j == 0 || tmp_xy > best_cost) {
         best_cost = tmp_xy;
         pos = j;
@@ -196,7 +410,7 @@ static float pvq_search_rdo_float(const od_val16 *xcoeff, int n, int k,
   for (i = 0; i < n; i++) {
     if (xcoeff[i] < 0) ypulse[i] = -ypulse[i];
   }
-  return xy/(1e-100 + sqrt(xx*yy));
+  return xy/(1e-100 + sqrtf(xx*yy));
 }
 
 /** Encodes the gain so that the return value increases with the
@@ -395,7 +609,7 @@ static int pvq_theta(od_coeff *out, const od_coeff *x0, const od_coeff *r0,
   /* gain_offset is meant to make sure one of the quantized gains has
      exactly the same gain as the reference. */
 #if defined(OD_FLOAT_PVQ)
-  icgr = (int)floor(.5 + cgr);
+  icgr = (int)floorf(.5 + cgr);
 #else
   icgr = OD_SHR_ROUND(cgr, OD_CGAIN_SHIFT);
 #endif
@@ -467,7 +681,7 @@ static int pvq_theta(od_coeff *out, const od_coeff *x0, const od_coeff *r0,
       qcg = OD_SHL(i, OD_CGAIN_SHIFT) + gain_offset;
       /* Set angular resolution (in ra) to match the encoded gain */
       ts = od_pvq_compute_max_theta(qcg, beta);
-      theta_lower = OD_MAXI(0, (int)floor(.5 +
+      theta_lower = OD_MAXI(0, (int)floorf(.5 +
        theta*OD_THETA_SCALE_1*2/M_PI*ts) - 2);
       theta_upper = OD_MINI(ts - 1, (int)ceil(theta*OD_THETA_SCALE_1*2/M_PI*ts));
       /* Include the angles within a reasonable range. */
@@ -1002,7 +1216,7 @@ PVQ_SKIP_TYPE od_pvq_encode(daala_enc_ctx *enc,
       skip_rate = -OD_LOG2(skip_cdf[0]/
      (float)skip_cdf[3]);
     }
-    tell -= (int)floor(.5+8*skip_rate);
+    tell -= (int)floorf(.5+8*skip_rate);
   }
   if (nb_bands == 0 || skip_diff <= enc->pvq_norm_lambda/8*tell) {
     if (is_keyframe) out[0] = 0;

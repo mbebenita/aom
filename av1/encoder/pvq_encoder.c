@@ -26,6 +26,8 @@
 #include "av1/common/pvq_state.h"
 #include "av1/encoder/encodemb.h"
 #include "av1/encoder/pvq_encoder.h"
+#include "./av1_rtcd.h"
+#include "aom_ports/system_state.h"
 
 #define OD_PVQ_RATE_APPROX (0)
 /*Shift to ensure that the upper bound (i.e. for the max blocksize) of the
@@ -81,7 +83,7 @@ static void od_fill_dynamic_rsqrt_table(float *table, const int table_size,
  *                          reuse for the search (or 0 for a new search)
  * @return                  cosine distance between x and y (between 0 and 1)
  */
-static float pvq_search_rdo_float(const od_val16 *xcoeff, int n, int k,
+float pvq_search_rdo_float_c(const od_val16 *xcoeff, int n, int k,
  od_coeff *ypulse, float g2, float pvq_norm_lambda, int prev_k) {
 
   int i, j;
@@ -95,13 +97,15 @@ static float pvq_search_rdo_float(const od_val16 *xcoeff, int n, int k,
   float norm_1;
   int rdo_pulses;
   float delta_rate;
+
   xx = xy = yy = 0;
   for (j = 0; j < n; j++) {
     x[j] = fabs((float)xcoeff[j]);
     xx += x[j]*x[j];
   }
-  norm_1 = 1./sqrt(1e-30 + xx);
+  norm_1 = 1./sqrtf(1e-30 + xx);
   lambda = pvq_norm_lambda/(1e-30 + g2);
+  // lambda = sqrt(xx)*pvq_norm_lambda/(1e-30 + g2);
   i = 0;
   if (prev_k > 0 && prev_k <= k) {
     /* We reuse pulses from a previous search so we don't have to search them
@@ -122,7 +126,7 @@ static float pvq_search_rdo_float(const od_val16 *xcoeff, int n, int k,
     for (j = 0; j < n; j++) {
       float tmp;
       tmp = k*x[j]*l1_inv;
-      ypulse[j] = OD_MAXI(0, (int)floor(tmp));
+      ypulse[j] = OD_MAXI(0, (int)floorf(tmp));
       xy += x[j]*ypulse[j];
       yy += ypulse[j]*ypulse[j];
       i += ypulse[j];
@@ -183,7 +187,7 @@ static float pvq_search_rdo_float(const od_val16 *xcoeff, int n, int k,
       /*Calculate rsqrt(yy + 2*ypulse[j] + 1) using an optimized method.*/
       tmp_yy = od_custom_rsqrt_dynamic_table(rsqrt_table, rsqrt_table_size,
        yy, ypulse[j]);
-      tmp_xy = 2*tmp_xy*norm_1*tmp_yy - lambda*j*delta_rate;
+      tmp_xy = 2*norm_1*tmp_xy*tmp_yy - lambda*delta_rate*j;
       if (j == 0 || tmp_xy > best_cost) {
         best_cost = tmp_xy;
         pos = j;
@@ -196,7 +200,7 @@ static float pvq_search_rdo_float(const od_val16 *xcoeff, int n, int k,
   for (i = 0; i < n; i++) {
     if (xcoeff[i] < 0) ypulse[i] = -ypulse[i];
   }
-  return xy/(1e-100 + sqrt(xx*yy));
+  return xy/(1e-100 + sqrtf(xx*yy));
 }
 
 /** Encodes the gain so that the return value increases with the
@@ -325,7 +329,9 @@ static int pvq_theta(od_coeff *out, const od_coeff *x0, const od_coeff *r0,
  const int16_t *qm_inv, float pvq_norm_lambda, int speed) {
   od_val32 g;
   od_val32 gr;
-  od_coeff y_tmp[MAXN];
+  od_coeff y_tmp[MAXN + 3];
+  OD_CLEAR(y_tmp, MAXN + 3);
+
   int i;
   /* Number of pulses. */
   int k;
@@ -395,7 +401,7 @@ static int pvq_theta(od_coeff *out, const od_coeff *x0, const od_coeff *r0,
   /* gain_offset is meant to make sure one of the quantized gains has
      exactly the same gain as the reference. */
 #if defined(OD_FLOAT_PVQ)
-  icgr = (int)floor(.5 + cgr);
+  icgr = (int)floorf(.5 + cgr);
 #else
   icgr = OD_SHR_ROUND(cgr, OD_CGAIN_SHIFT);
 #endif
@@ -467,7 +473,7 @@ static int pvq_theta(od_coeff *out, const od_coeff *x0, const od_coeff *r0,
       qcg = OD_SHL(i, OD_CGAIN_SHIFT) + gain_offset;
       /* Set angular resolution (in ra) to match the encoded gain */
       ts = od_pvq_compute_max_theta(qcg, beta);
-      theta_lower = OD_MAXI(0, (int)floor(.5 +
+      theta_lower = OD_MAXI(0, (int)floorf(.5 +
        theta*OD_THETA_SCALE_1*2/M_PI*ts) - 2);
       theta_upper = OD_MINI(ts - 1, (int)ceil(theta*OD_THETA_SCALE_1*2/M_PI*ts));
       /* Include the angles within a reasonable range. */
@@ -826,6 +832,8 @@ PVQ_SKIP_TYPE od_pvq_encode(daala_enc_ctx *enc,
   OD_UNUSED(by);
 #endif
 
+  aom_clear_system_state();
+
   use_masking = enc->use_activity_masking;
 
   if (use_masking)
@@ -998,7 +1006,7 @@ PVQ_SKIP_TYPE od_pvq_encode(daala_enc_ctx *enc,
       skip_rate = -OD_LOG2(skip_cdf[0]/
      (float)skip_cdf[3]);
     }
-    tell -= (int)floor(.5+8*skip_rate);
+    tell -= (int)floorf(.5+8*skip_rate);
   }
   if (nb_bands == 0 || skip_diff <= enc->pvq_norm_lambda/8*tell) {
     if (is_keyframe) out[0] = 0;

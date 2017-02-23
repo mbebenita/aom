@@ -26,6 +26,7 @@
 #include "av1/common/pvq_state.h"
 #include "av1/encoder/encodemb.h"
 #include "av1/encoder/pvq_encoder.h"
+#include "aom_ports/system_state.h"
 
 #define OD_PVQ_RATE_APPROX (0)
 /*Shift to ensure that the upper bound (i.e. for the max blocksize) of the
@@ -793,6 +794,8 @@ PVQ_SKIP_TYPE od_pvq_encode(daala_enc_ctx *enc,
                    const int16_t *qm_inv,
                    int speed,
                    PVQ_INFO *pvq_info){
+  aom_clear_system_state();
+
   int theta[PVQ_MAX_PARTITIONS];
   int max_theta[PVQ_MAX_PARTITIONS];
   int qg[PVQ_MAX_PARTITIONS];

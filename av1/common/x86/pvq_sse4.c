@@ -168,8 +168,8 @@ float pvq_search_rdo_float_sse4_1(const int16_t *xcoeff, int n, int k,
       /* Clear y and ypulse in case we don't do the projection. */
       _mm_storeu_ps(&y[i], _mm_setzero_ps());
       _mm_storeu_si128((__m128i *)&ypulse[i], _mm_setzero_si128());
-      _mm_storeu_ps(&x[i], x4);
     }
+    _mm_storeu_ps(&x[i], x4);
   }
   sums = horizontal_sum_ps(sums);
 

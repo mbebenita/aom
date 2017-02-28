@@ -15,6 +15,11 @@
 #include "./aom_dsp_rtcd.h"
 #include "./av1_rtcd.h"
 
+#include <smmintrin.h>
+#include <emmintrin.h>
+#include <tmmintrin.h>
+#include <float.h>
+
 #include "aom_dsp/aom_dsp_common.h"
 #include "aom_dsp/blend.h"
 #include "aom_mem/aom_mem.h"
@@ -479,6 +484,12 @@ static int od_compute_var_4x4(od_coeff *x, int stride) {
 #define OD_DIST_LP_MID (5)
 #define OD_DIST_LP_NORM (OD_DIST_LP_MID + 2)
 
+static inline float rsqrtf(float x) {
+  float y;
+  _mm_store_ss(&y, _mm_rsqrt_ss(_mm_load_ss(&x)));
+  return y;
+}
+
 static double od_compute_dist_8x8(int qm, int use_activity_masking, od_coeff *x,
                                   od_coeff *y, od_coeff *e_lp, int stride) {
   double sum;
@@ -505,9 +516,12 @@ static double od_compute_dist_8x8(int qm, int use_activity_masking, od_coeff *x,
       min_var = OD_MINI(min_var, varx);
       mean_var += 1. / (1 + varx);
       /* The cast to (double) is to avoid an overflow before the sqrt.*/
-      vardist += varx - 2 * sqrt(varx * (double)vary) + vary;
+      double varxy = varx * (double)vary;
+      vardist += varx - 2 * varxy * rsqrtf(varxy + FLT_MIN) + vary;
     }
   }
+
+
   /* We use a different variance statistic depending on whether activity
      masking is used, since the harmonic mean appeared slghtly worse with
      masking off. The calibration constant just ensures that we preserve the

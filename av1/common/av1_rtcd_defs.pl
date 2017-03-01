@@ -769,6 +769,16 @@ if (aom_config("CONFIG_PVQ") eq "yes") {
   specialize qw/pvq_search_rdo_double sse4_1/;
 }
 
+# Dist Functions
+
+if (aom_config("CONFIG_DAALA_DIST") eq "yes") {
+  add_proto qw/int od_compute_var_4x4/, "int *xcoeff, int stride";
+  specialize qw/od_compute_var_4x4 sse4_1/;
+
+  add_proto qw/double od_compute_dist_8x8/, "int qm, int use_activity_masking, int *x, int *y, int *e_lp, int stride";
+  specialize qw/od_compute_dist_8x8 sse4_1/;
+}
+
 # WARPED_MOTION / GLOBAL_MOTION functions
 
 if ((aom_config("CONFIG_WARPED_MOTION") eq "yes") ||

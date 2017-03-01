@@ -455,7 +455,7 @@ static const TX_TYPE_1D htx_tab[TX_TYPES] = {
 };
 
 #if CONFIG_DAALA_DIST
-static int od_compute_var_4x4(od_coeff *x, int stride) {
+int od_compute_var_4x4_c(od_coeff *x, int stride) {
   int sum;
   int s2;
   int i;
@@ -488,7 +488,7 @@ static inline float rsqrtf(float x) {
   return y;
 }
 
-static double od_compute_dist_8x8(int qm, int use_activity_masking, od_coeff *x,
+double od_compute_dist_8x8_c(int qm, int use_activity_masking, od_coeff *x,
                                   od_coeff *y, od_coeff *e_lp, int stride) {
   double sum;
   int min_var;
@@ -549,7 +549,7 @@ static double od_compute_dist_8x8(int qm, int use_activity_masking, od_coeff *x,
 }
 
 // Note : Inputs x and y are in a pixel domain
-static double od_compute_dist(int qm, int activity_masking, od_coeff *x,
+double od_compute_dist(int qm, int activity_masking, od_coeff *x,
                               od_coeff *y, int bsize_w, int bsize_h,
                               int qindex) {
   int i;

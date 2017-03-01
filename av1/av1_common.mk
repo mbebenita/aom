@@ -123,7 +123,10 @@ AV1_COMMON_SRCS-yes += common/laplace_tables.c
 AV1_COMMON_SRCS-$(HAVE_SSE4_1) += common/x86/pvq_sse4.c
 AV1_COMMON_SRCS-$(HAVE_SSE4_1) += common/x86/pvq_sse4.h
 endif
-
+ifeq ($(CONFIG_DAALA_DIST),yes)
+AV1_COMMON_SRCS-$(HAVE_SSE4_1) += common/x86/dist_sse4.c
+AV1_COMMON_SRCS-$(HAVE_SSE4_1) += common/x86/dist_sse4.h
+endif
 ifneq ($(CONFIG_AOM_HIGHBITDEPTH),yes)
 AV1_COMMON_SRCS-$(HAVE_DSPR2)  += common/mips/dspr2/av1_itrans4_dspr2.c
 AV1_COMMON_SRCS-$(HAVE_DSPR2)  += common/mips/dspr2/av1_itrans8_dspr2.c

@@ -15,8 +15,6 @@
 #include "./aom_dsp_rtcd.h"
 #include "./av1_rtcd.h"
 
-#include <smmintrin.h>
-#include <emmintrin.h>
 #include <tmmintrin.h>
 #include <float.h>
 
